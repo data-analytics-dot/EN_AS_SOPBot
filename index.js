@@ -307,7 +307,7 @@ slackApp.event("app_mention", async ({ event, client }) => {
 ${followUpNote}
 Rules:
 1. First, identify the ONE SOP that best matches the user's question (use the title + content).
-2. Then, find the SINGLE most relevant step (or sub-steps) inside that SOP, make sure it is relevant to the question asked.
+2. Then, find the SINGLE most relevant step (or sub-steps) inside that SOP, make sure it is relevant to the question asked and include it in the message.
 3. Answer ONLY from that step. Do NOT include unrelated steps, summaries, or introductions.
 4. Paraphrase concisely in instructional style, second person ("you"), with clear action verbs.
 5. Always add one insight:
