@@ -13,6 +13,38 @@ const SESSIONS_FILE = process.env.SESSIONS_FILE || path.join(process.cwd(), "ses
 const SAVE_DELAY_MS = 500;
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS) || 1000 * 60 * 60; // 1 hour
 
+// --- 🧠 Memory for per-user, per-thread SOP step tracking ---
+function getUserContext(userId, thread_ts) {
+  if (!userSessions[userId]) userSessions[userId] = {};
+  if (!userSessions[userId][thread_ts]) {
+    userSessions[userId][thread_ts] = {
+      lastSOP: null,
+      lastStepNumber: null,
+      awaitingConfirmation: false,
+    };
+  }
+  return userSessions[userId][thread_ts];
+}
+
+function setUserContext(userId, thread_ts, data) {
+  if (!userSessions[userId]) userSessions[userId] = {};
+  userSessions[userId][thread_ts] = {
+    ...userSessions[userId][thread_ts],
+    ...data,
+    timestamp: Date.now(),
+  };
+  scheduleSaveSessions();
+}
+
+function resetUserContext(userId, thread_ts) {
+  if (userSessions[userId]) {
+    delete userSessions[userId][thread_ts];
+    scheduleSaveSessions();
+  }
+}
+
+
+
 let userSessions = {};
 let _saveTimeout = null;
 
@@ -186,6 +218,58 @@ slackApp.event("app_mention", async ({ event, client }) => {
   const thread_ts = event.thread_ts || event.ts;
   console.log(`User asked: ${query}`);
 
+  // --- Retrieve or initialize user context for this thread ---
+const context = getUserContext(userId, thread_ts);
+
+// --- Step Navigation Commands ---
+const lowerText = query.toLowerCase();
+
+// 🧭 Reset context
+if (lowerText.includes("start over") || lowerText.includes("reset")) {
+  resetUserContext(userId, thread_ts);
+  await client.chat.postMessage({
+    channel: event.channel,
+    thread_ts,
+    text: "Got it — starting fresh! What SOP do you want to ask about?",
+  });
+  return;
+}
+
+// ⏭️ Next step
+if (context.lastSOP && lowerText.includes("next step")) {
+  context.lastStepNumber = (context.lastStepNumber || 1) + 1;
+  await client.chat.postMessage({
+    channel: event.channel,
+    thread_ts,
+    text: `Next step for *${context.lastSOP}* is Step ${context.lastStepNumber}.`,
+  });
+  setUserContext(userId, thread_ts, context);
+  return;
+}
+
+// ⏮️ Previous step
+if (context.lastSOP && lowerText.includes("previous step")) {
+  context.lastStepNumber = Math.max(1, (context.lastStepNumber || 2) - 1);
+  await client.chat.postMessage({
+    channel: event.channel,
+    thread_ts,
+    text: `Previous step for *${context.lastSOP}* is Step ${context.lastStepNumber}.`,
+  });
+  setUserContext(userId, thread_ts, context);
+  return;
+}
+
+// ❓ Ask which step this is
+if (context.lastSOP && lowerText.includes("what step")) {
+  await client.chat.postMessage({
+    channel: event.channel,
+    thread_ts,
+    text: `Based on your last question, this is Step ${context.lastStepNumber || 1} from *${context.lastSOP}*.`,
+  });
+  return;
+}
+
+
   // --- Handle pending confirmation ---
   const session = userSessions[userId];
   if (session?.awaitingConfirmation && session.thread_ts === thread_ts) {
@@ -336,8 +420,18 @@ ${sopContexts}`;
       channel: event.channel,
       thread_ts,
       text: `${deprecatedNotice}${answer}\n\n${statusNote}`,
+
+      
+    });
+
+    setUserContext(userId, thread_ts, {
+      lastSOP: validSOP.title,
+      lastStepNumber: 1, // Optionally update later if GPT can detect specific step number
+      activeSOPs: topSops,
     });
   }
+
+
 
   // Ask for confirmation and store session
   await client.chat.postMessage({
