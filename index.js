@@ -1,0 +1,385 @@
+import pkg from "@slack/bolt";
+const { App } = pkg;
+import dotenv from "dotenv";
+import axios from "axios";
+import OpenAI from "openai";
+import fs from "fs/promises";
+import path from "path";
+
+dotenv.config();
+
+// --- Persistent session setup ---
+const SESSIONS_FILE = process.env.SESSIONS_FILE || path.join(process.cwd(), "sessions.json");
+const SAVE_DELAY_MS = 500;
+const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS) || 1000 * 60 * 60; // 1 hour
+
+let userSessions = {};
+let _saveTimeout = null;
+
+// Load saved sessions (ignore expired)
+async function loadSessions() {
+  try {
+    const raw = await fs.readFile(SESSIONS_FILE, "utf8");
+    const data = JSON.parse(raw);
+    const now = Date.now();
+    for (const id of Object.keys(data)) {
+      const s = data[id];
+      if (s && s.timestamp && now - s.timestamp > SESSION_TTL_MS) {
+        delete data[id];
+      }
+    }
+    userSessions = data;
+    console.log("✅ Sessions loaded from", SESSIONS_FILE);
+  } catch (err) {
+    if (err.code === "ENOENT") console.log("No previous sessions file — starting fresh");
+    else console.error("Error loading sessions:", err);
+    userSessions = {};
+  }
+}
+
+// Save sessions to disk (atomic)
+async function saveSessionsNow() {
+  try {
+    const tmp = SESSIONS_FILE + ".tmp";
+    await fs.writeFile(tmp, JSON.stringify(userSessions, null, 2), "utf8");
+    await fs.rename(tmp, SESSIONS_FILE);
+  } catch (err) {
+    console.error("Error saving sessions:", err);
+  }
+}
+
+// Debounce writes
+function scheduleSaveSessions() {
+  if (_saveTimeout) clearTimeout(_saveTimeout);
+  _saveTimeout = setTimeout(() => {
+    _saveTimeout = null;
+    saveSessionsNow();
+  }, SAVE_DELAY_MS);
+}
+
+function setSession(userId, sessionObj) {
+  userSessions[userId] = { ...sessionObj, timestamp: Date.now() };
+  scheduleSaveSessions();
+}
+
+function clearSession(userId) {
+  if (userSessions[userId]) {
+    delete userSessions[userId];
+    scheduleSaveSessions();
+  }
+}
+
+// --- Init Slack + OpenAI ---
+const slackApp = new App({
+  token: process.env.SLACK_BOT_TOKEN,
+  socketMode: true,
+  appToken: process.env.SLACK_APP_TOKEN,
+});
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+// --- Helper: fetch SOPs from Coda (with pagination) ---
+async function fetchSOPs() {
+  const baseUrl = `https://coda.io/apis/v1/docs/${process.env.CODA_DOC_ID}/tables/${process.env.CODA_TABLE_ID}/rows?useColumnNames=true`;
+  const headers = { Authorization: `Bearer ${process.env.CODA_API_TOKEN}` };
+  let url = baseUrl;
+  let allRows = [];
+
+  while (url) {
+    const res = await axios.get(url, { headers });
+    const data = res.data;
+
+    allRows.push(...(data.items || []));
+    url = data.nextPageLink || null;
+  }
+
+  const sops = allRows.map((r) => {
+    const v = r.values || {};
+    return {
+      title: v.Title ?? "Untitled SOP",
+      sop: v.Content ?? "",
+      link: v["Row Link"] ?? "",
+      status: v.Status ?? "",
+    };
+  });
+
+  console.log(`✅ Loaded ${sops.length} SOPs from Coda`);
+  return sops;
+}
+
+// --- Helper: parse SOP into steps ---
+function parseSteps(sopText) {
+  const lines = sopText.split("\n");
+  let currentStep = "";
+  let stepContent = [];
+  const steps = [];
+
+  for (const line of lines) {
+    const stepHeaderMatch = line.match(/^##\s*Step\s*\d+/i);
+    if (stepHeaderMatch) {
+      if (stepContent.length > 0) {
+        steps.push({ step: currentStep, content: stepContent.join("\n") });
+      }
+      currentStep = line;
+      stepContent = [];
+    } else {
+      stepContent.push(line);
+    }
+  }
+
+  if (stepContent.length > 0) {
+    steps.push({ step: currentStep, content: stepContent.join("\n") });
+  }
+
+  return steps;
+}
+
+// --- Helper: filter relevant SOPs ---
+function filterRelevantSOPs(sops, query) {
+  const q = query.toLowerCase().replace(/[^\w\s]/g, "").trim();
+  console.log(`\n🔍 Filtering SOPs for query: "${query}"`);
+
+  const scored = sops.map((s) => {
+    const title = (s.title || "").toLowerCase();
+    const content = (s.sop || "").toLowerCase();
+    let score = 0;
+
+    const queryWords = q.split(/\s+/).filter(Boolean);
+    const titleWords = title.split(/\s+/).filter(Boolean);
+
+    let matchCount = 0;
+    for (const w of queryWords) {
+      if (titleWords.some((tw) => tw.includes(w))) matchCount++;
+    }
+
+    score += matchCount * 10;
+
+    let contentMatchCount = 0;
+    for (const w of queryWords) {
+      if (content.includes(w)) contentMatchCount++;
+    }
+    score += contentMatchCount * 2;
+
+    return { ...s, score };
+  });
+
+  const sorted = scored.sort((a, b) => b.score - a.score);
+  const filtered = sorted.filter((s) => s.score > 0);
+
+  const top = filtered.length > 0 ? filtered.slice(0, 3) : sorted.slice(0, 2);
+  if (top.length > 0) {
+    console.log(`✅ Top match: "${top[0].title}" (score ${top[0].score})`);
+  } else {
+    console.log("⚠️ No relevant SOP found");
+  }
+
+  return top;
+}
+
+// --- Handle app mention ---
+slackApp.event("app_mention", async ({ event, client }) => {
+  const userId = event.user;
+  const query = event.text.replace(/<@[^>]+>/, "").trim();
+  const thread_ts = event.thread_ts || event.ts;
+  console.log(`User asked: ${query}`);
+
+  // --- Handle pending confirmation ---
+  const session = userSessions[userId];
+  if (session?.awaitingConfirmation && session.thread_ts === thread_ts) {
+    const text = (event.text || "").trim().toLowerCase();
+    if (["yes", "yep", "yeah"].includes(text)) {
+      await client.chat.postMessage({
+        channel: event.channel,
+        thread_ts,
+        text: "Glad I could help! You can view or search this SOP and others directly here: <https://coda.io/d/SOP-Database_dRB4PLkqlNM|SOP Library>. 🔍",
+      });
+      clearSession(userId);
+      return;
+    } else if (["no", "nope", "nah"].includes(text)) {
+      await client.chat.postMessage({
+        channel: event.channel,
+        thread_ts,
+        text: "Alright, go ahead and ask your next question. 🙂",
+      });
+      clearSession(userId);
+      return;
+    }
+  }
+
+   // --- Fetch or reuse SOPs ---
+  let topSops;
+  let isFollowUp = false;
+
+  if (session?.activeSOPs && session.thread_ts === thread_ts) {
+    console.log("💬 Follow-up question detected — reusing previous SOPs");
+    topSops = session.activeSOPs;
+    isFollowUp = true;
+  } else {
+    const sops = await fetchSOPs();
+    topSops = filterRelevantSOPs(sops, query);
+  }
+
+  if (topSops.length === 0) {
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      text: "I couldn’t find an SOP that matches your question.",
+    });
+  } else {
+   
+    // --- Handle deprecated and in-progress statuses before building prompt ---
+    let statusNote = "";
+    let deprecatedNotice = "";
+
+    let topMatch = topSops[0];
+    const isDeprecated = (topMatch.status || "").toLowerCase().includes("deprecated");
+
+    // Filter only live SOPs for related list (exclude deprecated)
+    const relatedSOPs = topSops.filter(s => !(s.status || "").toLowerCase().includes("deprecated"));
+
+    if (isDeprecated) {
+      if (relatedSOPs.length === 0) {
+        await client.chat.postMessage({
+          channel: event.channel,
+          thread_ts,
+          text: `:warning: The top match SOP "${topMatch.title}" is deprecated, and no live related SOPs were found. Please check the SOP library for newer versions.`,
+        });
+        return;
+      }
+
+      const relatedList = relatedSOPs
+        .slice(0, 5)
+        .map((s, i) => `${i + 1}. <${s.link}|${s.title}> (Status: ${s.status || "N/A"}, Score: ${s.score})`)
+        .join("\n");
+
+      await client.chat.postMessage({
+        channel: event.channel,
+        thread_ts,
+        text: `:warning: The top match SOP "${topMatch.title}" is *deprecated*. Showing related *live* SOPs instead:\n\n${relatedList}\n\nCheck out these related SOPs in the <https://coda.io/d/SOP-Database_dRB4PLkqlNM|SOP Library> — one of them may have the details you’re looking for.`,
+      });
+      return;
+    }
+
+    // ✅ If top SOP is live, just proceed normally
+    let validSOP = topMatch;
+    topSops = [validSOP];
+
+    // --- Add contextual note based on the SOP’s status ---
+    if (validSOP.status) {
+      const status = validSOP.status.toLowerCase();
+
+      if (status.includes("update in-progress")) {
+        statusNote = `> 📝 *Note:* This SOP’s *update is in progress* — contents may still change.`;
+      } else if (status.includes("in-progress")) {
+        statusNote = `> :warning: *Note:* This SOP is *still being written* and may not yet be finalized.`;
+      } else if (status.includes("pending review")) {
+        statusNote = `> 📝 *Note:* This SOP is *pending review* — details might be revised soon.`;
+      }
+    }
+
+
+
+    // --- Build context for GPT only from the valid SOP ---
+    const sopContexts = topSops
+      .map((s) => {
+        const steps = parseSteps(s.sop)
+          .map((step) => `${step.step}\n${step.content}`)
+          .join("\n\n");
+        return `Title: ${s.title}\nLink: <${s.link}|${s.title}>\n${steps}`;
+      })
+      .join("\n\n---\n\n");
+
+
+  // --- If follow-up, prepend context about previous SOP ---
+    let followUpNote = "";
+    if (isFollowUp && topSops.length > 0) {
+      followUpNote = `\nThe user is asking a follow-up question about the same SOP titled "${topSops[0].title}". Use only this SOP to answer. They may be asking for details, all steps, or clarification.\n\n`;
+    }
+
+
+    const prompt = `You are a helpful support assistant for SOPs. Use the SOPs below as your knowledge base.
+
+${followUpNote}
+Rules:
+1. First, identify the ONE SOP that best matches the user's question (use the title + content).
+2. Then, find the SINGLE most relevant step (or sub-steps) inside that SOP, make sure it is relevant to the question asked.
+3. Answer ONLY from that step. Do NOT include unrelated steps, summaries, or introductions.
+4. Paraphrase concisely in instructional style, second person ("you"), with clear action verbs.
+5. Always add one insight:
+   - 💡 Tip (efficiency)
+   - ⚠️ Warning (risk)
+   - 📝 Note (context)
+6. End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
+7. If no SOP or step matches, respond: "I couldn’t find an SOP that matches your question."
+
+
+User question: ${query}
+
+Here are all the SOPs:
+${sopContexts}`;
+
+    const gptRes = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+    });
+
+    const answer = gptRes.choices[0].message?.content ?? "No answer.";
+
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      text: `${deprecatedNotice}${answer}\n\n${statusNote}`,
+    });
+  }
+
+  // Ask for confirmation and store session
+  await client.chat.postMessage({
+    channel: event.channel,
+    thread_ts,
+    text: "Is that everything? (yes/no)",
+  });
+
+  setSession(userId, {
+    awaitingConfirmation: true,
+    thread_ts,
+    activeSOPs: topSops, // ✅ Save SOPs for follow-ups in same thread
+  });
+});
+// --- Handle yes/no replies in thread ---
+slackApp.event("message", async ({ event, client }) => {
+  // Ignore bot messages or messages not in a thread
+  if (event.subtype === "bot_message" || !event.thread_ts) return;
+
+  const userId = event.user;
+  const session = userSessions[userId];
+  const text = (event.text || "").trim().toLowerCase();
+
+  // Only respond if the user has an active confirmation session in this thread
+  if (!session?.awaitingConfirmation || session.thread_ts !== event.thread_ts) return;
+
+  if (["yes", "yep", "yeah"].includes(text)) {
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts: event.thread_ts,
+      text: "Glad I could help! You can view or search this SOP and others directly here: <https://coda.io/d/SOP-Database_dRB4PLkqlNM|SOP Library>. 🔍",
+    });
+    clearSession(userId);
+  } else if (["no", "nope", "nah"].includes(text)) {
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts: event.thread_ts,
+      text: "Alright, go ahead and ask your next question. 🙂",
+    });
+    clearSession(userId);
+  }
+});
+
+// --- Start Slack App ---
+(async () => {
+  await loadSessions();
+  await slackApp.start();
+  console.log("⚡ SOP Bot is running!");
+})();

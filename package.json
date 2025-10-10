@@ -1,0 +1,27 @@
+{
+  "name": "sopchatbot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kristine1231/SOPchatbot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/Kristine1231/SOPchatbot/issues"
+  },
+  "homepage": "https://github.com/Kristine1231/SOPchatbot#readme",
+  "dependencies": {
+    "@slack/bolt": "^4.4.0",
+    "axios": "^1.11.0",
+    "dotenv": "^17.2.1",
+    "openai": "^5.15.0"
+  }
+}
