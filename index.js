@@ -102,6 +102,7 @@ async function fetchSOPs() {
       sop: v.Content ?? "",
       link: v["Row Link"] ?? "",
       status: v.Status ?? "",
+      author: v.Author ?? "",
     };
   });
 
@@ -315,6 +316,7 @@ Rules:
    - 📝 Note (context)
 6. End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
 7. If no SOP or step matches, respond: "I couldn’t find an SOP that matches your question."
+
 
 
 User question: ${query}
