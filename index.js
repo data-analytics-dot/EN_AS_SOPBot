@@ -269,13 +269,15 @@ slackApp.event("app_mention", async ({ event, client }) => {
     // --- Add contextual note based on the SOP’s status ---
     if (validSOP.status) {
       const status = validSOP.status.toLowerCase();
+      const authorName = validSOP.author || null;
+      const authorNote = authorName ? ` Reach out to *${authorName}* for any questions.` : "";
 
       if (status.includes("update in-progress")) {
-        statusNote = `> 📝 *Note:* This SOP’s *update is in progress* — contents may still change.`;
+        statusNote = `> 📝 *Note:* This SOP’s *update is in progress* — contents may still change.${authorNote}`;
       } else if (status.includes("in-progress")) {
-        statusNote = `> :warning: *Note:* This SOP is *still being written* and may not yet be finalized.`;
+        statusNote = `> :warning: *Note:* This SOP is *still being written* and may not yet be finalized.${authorNote}`;
       } else if (status.includes("pending review")) {
-        statusNote = `> 📝 *Note:* This SOP is *pending review* — details might be revised soon.`;
+        statusNote = `> 📝 *Note:* This SOP is *pending review* — details might be revised soon.${authorNote}`;
       }
     }
 
