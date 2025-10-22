@@ -437,7 +437,7 @@ ${sopContexts}`;
   await client.chat.postMessage({
     channel: event.channel,
     thread_ts,
-    text: "Is that everything? (yes/no)",
+    text: "Is that everything?",
   });
 
   setSession(userId, {
