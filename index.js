@@ -132,7 +132,7 @@ async function fetchSOPs() {
     return {
       title: v.Title ?? "Untitled SOP",
       sop: v.Content ?? "",
-      link: v["Row Link"] ?? "",
+      link: v["SOP Traceable Link"] ?? "",
       status: v.Status ?? "",
       author: v.Author ?? "",
     };
