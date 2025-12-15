@@ -137,6 +137,7 @@ async function fetchSOPs() {
       link: v["SOP Traceable Link"] ?? "",
       status: v.Status ?? "",
       author: v.Author ?? "",
+      tags: v["Tags Bot Result"] ?? "",
     };
   });
 
@@ -221,7 +222,7 @@ function filterRelevantSOPs(sops, query) {
   const scored = sops.map((s) => {
     const title = (s.title || "").toLowerCase();
     const content = (s.sop || "").toLowerCase();
-    const tagsRaw = s["Tags Bot Result"] || s.tagging || "";
+    const tagsRaw = s.tags || "";
     const tags = Array.isArray(tagsRaw)
       ? tagsRaw.map(t => t.toLowerCase().trim())
       : tagsRaw.toLowerCase().split(/[,;|]/).map(t => t.trim()).filter(Boolean);
