@@ -221,7 +221,7 @@ function filterRelevantSOPs(sops, query) {
   const scored = sops.map((s) => {
     const title = (s.title || "").toLowerCase();
     const content = (s.sop || "").toLowerCase();
-    const tagsRaw = s["SOP Chatbot Tag"] || s.tagging || "";
+    const tagsRaw = s["Tags Bot Result"] || s.tagging || "";
     const tags = Array.isArray(tagsRaw)
       ? tagsRaw.map(t => t.toLowerCase().trim())
       : tagsRaw.toLowerCase().split(/[,;|]/).map(t => t.trim()).filter(Boolean);
