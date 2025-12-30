@@ -586,18 +586,24 @@ slackApp.event("message", async ({ event, client }) => {
 
   const lowerText = (event.text || "").toLowerCase();
 
-  // ⏸ PAUSE / END — 🔴 THIS IS THE MISSING PART
-  if (["done", "thanks", "stop", "end", "resolved"].some(w => lowerText.includes(w))) {
-    setUserContext(userId, threadId, { state: "paused" });
-
-    await client.chat.postMessage({
-      channel: event.channel,
-      thread_ts: threadId,
-      text: "✅ Got it — I’ll step back. Say *resume* or mention me if you need more help.",
-    });
+    // Check for resume first
+  if (lowerText === "resume") {
+    if (ctx.state === "paused") {
+      setUserContext(userId, threadId, { state: "active" });
+      await client.chat.postMessage({
+        channel: event.channel,
+        thread_ts: threadId,
+        text: `🔄 Resumed. We were on *${ctx.lastSOP ?? "your SOP"}*.`,
+      });
+    } else {
+      await client.chat.postMessage({
+        channel: event.channel,
+        thread_ts: threadId,
+        text: "Your session is already active. You can continue asking questions.",
+      });
+    }
     return;
   }
-
     // 🚫 Ignore unless explicitly active
   if (ctx.state !== "active") return;
   if (!ctx.activeSOPs?.length) return;
