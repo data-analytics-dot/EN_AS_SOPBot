@@ -19,9 +19,12 @@ function getUserContext(userId, thread_ts) {
   if (!userSessions[userId]) userSessions[userId] = {};
   if (!userSessions[userId][thread_ts]) {
     userSessions[userId][thread_ts] = {
+      state: "idle", 
       lastSOP: null,
       lastStepNumber: null,
       awaitingConfirmation: false,
+      timestamp: Date.now(),
+      activeSOPs: [],
     };
   }
   return userSessions[userId][thread_ts];
@@ -293,18 +296,55 @@ slackApp.event("app_mention", async ({ event, client }) => {
   const query = event.text.replace(/<@[^>]+>/, "").trim();
   const thread_ts = event.thread_ts || event.ts;
 
+    // ⏳ Expire stale context for this user + thread
+  const ctx = getUserContext(userId, thread_ts);
+  if (Date.now() - ctx.timestamp > SESSION_TTL_MS) {
+    resetUserContext(userId, thread_ts);
+  }
+
+
   const session = userSessions[userId] || {};
 
   console.log(`User asked: ${query}`);
 
-  
-
-
   // --- Retrieve or initialize user context for this thread ---
-const context = getUserContext(userId, thread_ts);
+  const context = getUserContext(userId, thread_ts);
 
-// --- Step Navigation Commands ---
-const lowerText = query.toLowerCase();
+  setUserContext(userId, thread_ts, {
+    state: "active",
+  });
+
+  // --- Step Navigation Commands ---
+  const lowerText = query.toLowerCase();
+
+  // ⏸ Pause / end conversation
+  if (["done", "thanks", "stop", "end", "resolved"].some(w => lowerText.includes(w))) {
+    setUserContext(userId, thread_ts, { state: "paused" });
+
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      text: "✅ Got it — I’ll step back. Say *resume* or mention me if you need more help.",
+    });
+    return;
+  }
+
+  // 🔄 Resume conversation
+  if (lowerText === "resume") {
+    const ctx = getUserContext(userId, thread_ts);
+
+    if (ctx.state === "paused") {
+      setUserContext(userId, thread_ts, { state: "active" });
+
+      await client.chat.postMessage({
+        channel: event.channel,
+        thread_ts,
+        text: `🔄 Resumed. We were on *${ctx.lastSOP ?? "your SOP"}*.`,
+      });
+    }
+    return;
+  }
+
 
 // 🧭 Reset context
 if (lowerText.includes("start over") || lowerText.includes("reset")) {
@@ -537,9 +577,17 @@ slackApp.event("message", async ({ event, client }) => {
   const userId = event.user;
   const threadId = event.thread_ts;
 
+    // ⏳ Expire stale context for this user + thread
+  const ctx = getUserContext(userId, thread_ts);
+  if (Date.now() - ctx.timestamp > SESSION_TTL_MS) {
+    resetUserContext(userId, thread_ts);
+  }
+
+
   // Use updated context system
   const context = getUserContext(userId, threadId);
   if (!context || !context.activeSOPs?.length) return;
+  if (context.state !== "active") return;
 
   const activeSOP = context.activeSOPs[0];
   const query = event.text.trim();
