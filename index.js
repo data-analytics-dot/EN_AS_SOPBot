@@ -434,6 +434,7 @@ if (context.lastSOP && lowerText.includes("what step")) {
       thread_ts,
       text: "I couldn’t find an SOP that matches your question.",
     });
+    return;
   } else {
    
     // --- Handle deprecated and in-progress statuses before building prompt ---
@@ -578,15 +579,16 @@ slackApp.event("message", async ({ event, client }) => {
   const threadId = event.thread_ts;
 
     // ⏳ Expire stale context for this user + thread
-  const ctx = getUserContext(userId, threadId);
-  if (Date.now() - ctx.timestamp > SESSION_TTL_MS) {
+  let ctx = getUserContext(userId, threadId);
+  if (!ctx || Date.now() - ctx.timestamp > SESSION_TTL_MS) {
     resetUserContext(userId, threadId);
+    ctx = getUserContext(userId, threadId); // refresh
   }
 
 
   const lowerText = (event.text || "").toLowerCase();
 
-    // Check for resume first
+  // --- Resume ---
   if (lowerText === "resume") {
     if (ctx.state === "paused") {
       setUserContext(userId, threadId, { state: "active" });
@@ -604,6 +606,20 @@ slackApp.event("message", async ({ event, client }) => {
     }
     return;
   }
+
+  // --- Pause / end commands ---
+  const pauseCommands = ["done", "thanks", "stop", "end", "resolved"];
+  if (pauseCommands.some(cmd => lowerText.includes(cmd))) {
+    setUserContext(userId, threadId, { state: "paused" });
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts: threadId,
+      text: "✅ Got it — I’ll step back. Say *resume* or mention me if you need more help.",
+    });
+    return;
+  }
+
+
     // 🚫 Ignore unless explicitly active
   if (ctx.state !== "active") return;
   if (!ctx.activeSOPs?.length) return;
