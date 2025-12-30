@@ -578,9 +578,9 @@ slackApp.event("message", async ({ event, client }) => {
   const threadId = event.thread_ts;
 
     // ⏳ Expire stale context for this user + thread
-  const ctx = getUserContext(userId, thread_ts);
+  const ctx = getUserContext(userId, threadId);
   if (Date.now() - ctx.timestamp > SESSION_TTL_MS) {
-    resetUserContext(userId, thread_ts);
+    resetUserContext(userId, threadId);
   }
 
 
