@@ -603,7 +603,7 @@ slackApp.event("message", async ({ event, client }) => {
   if (!ctx.activeSOPs?.length) return;
 
 
-  const activeSOP = context.activeSOPs[0];
+  const activeSOP = ctx.activeSOPs[0];
   const query = event.text.trim();
 
   console.log("🔥 Follow-up in thread detected:", query);
