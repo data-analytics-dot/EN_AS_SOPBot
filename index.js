@@ -584,10 +584,24 @@ slackApp.event("message", async ({ event, client }) => {
   }
 
 
-  // Use updated context system
-  const context = getUserContext(userId, threadId);
-  if (!context || !context.activeSOPs?.length) return;
-  if (context.state !== "active") return;
+  const lowerText = (event.text || "").toLowerCase();
+
+  // ⏸ PAUSE / END — 🔴 THIS IS THE MISSING PART
+  if (["done", "thanks", "stop", "end", "resolved"].some(w => lowerText.includes(w))) {
+    setUserContext(userId, threadId, { state: "paused" });
+
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts: threadId,
+      text: "✅ Got it — I’ll step back. Say *resume* or mention me if you need more help.",
+    });
+    return;
+  }
+
+    // 🚫 Ignore unless explicitly active
+  if (ctx.state !== "active") return;
+  if (!ctx.activeSOPs?.length) return;
+
 
   const activeSOP = context.activeSOPs[0];
   const query = event.text.trim();
