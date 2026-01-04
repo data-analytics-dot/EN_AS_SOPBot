@@ -614,7 +614,7 @@ slackApp.event("message", async ({ event, client }) => {
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts: threadId,
-      text: "✅ Got it — I’ll step back. Say *resume* or mention me if you need more help.",
+      text: "✅ Got it — I’ll step back. Say *resume* if you need more help.",
     });
     return;
   }
