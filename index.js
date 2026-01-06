@@ -481,7 +481,7 @@ if (context.lastSOP && lowerText.includes("what step")) {
 
      // --- LOG TO CODA ---
   await logSopUsageToCoda({
-    userId: event.user,
+    userId: userId,
     channel: event.channel,
     threadTs: thread_ts,
     question: query,
@@ -754,6 +754,7 @@ ${sopContexts}
     stepFound: true,
     status: "Follow-up Answer",
   });
+
 });
 
 
