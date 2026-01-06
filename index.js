@@ -512,7 +512,7 @@ if (context.lastSOP && lowerText.includes("what step")) {
         });
 
           await logSopUsageToCoda({
-            userId: event.user,
+            userId: userId,
             channel: event.channel,
             threadTs: thread_ts,
             question: query,
@@ -621,7 +621,7 @@ ${sopContexts}`;
     });
 
     await logSopUsageToCoda({
-      userId: event.user,
+      userId: userId,
       channel: event.channel,
       threadTs: thread_ts,
       question: query,
@@ -744,17 +744,19 @@ ${sopContexts}
     thread_ts: threadId,
     text: gptRes.choices[0].message.content,
   });
+
+  await logSopUsageToCoda({
+    userId: userId,
+    channel: event.channel,
+    threadTs: threadId,
+    question: query,
+    sopTitle: activeSOP.title,
+    stepFound: true,
+    status: "Follow-up Answer",
+  });
 });
 
-await logSopUsageToCoda({
-  userId: event.user,
-  channel: event.channel,
-  threadTs: threadId,
-  question: query,
-  sopTitle: activeSOP.title,
-  stepFound: true,
-  status: "Follow-up Answer",
-});
+
 
 
 // --- Handle yes/no replies in thread ---
