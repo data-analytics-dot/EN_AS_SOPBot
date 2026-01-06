@@ -539,12 +539,17 @@ ${sopContexts}`;
 
     const answer = gptRes.choices[0].message?.content ?? "No answer.";
 
+    const NO_SOP_RESPONSE = "I couldn’t find an SOP that matches your question.";
+
+    const finalText =
+      answer.trim() === NO_SOP_RESPONSE
+        ? NO_SOP_RESPONSE
+        : `${deprecatedNotice}${answer}\n\n${statusNote}`;
+
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts,
-      text: `${deprecatedNotice}${answer}\n\n${statusNote}`,
-
-      
+      text: finalText,
     });
 
     setUserContext(userId, thread_ts, {
