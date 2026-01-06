@@ -12,6 +12,50 @@ dotenv.config();
 const SESSIONS_FILE = process.env.SESSIONS_FILE || path.join(process.cwd(), "sessions.json");
 const SAVE_DELAY_MS = 500;
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS) || 1000 * 60 * 60; // 1 hour
+const CODA_SOP_USAGE_TABLE_ID = process.env.CODA_SOP_USAGE_TABLE_ID;
+const CODA_DOC_ID_LOGS = process.env.CODA_DOC_ID_LOGS;
+
+
+async function logSopUsageToCoda({
+  userId,
+  channel,
+  threadTs,
+  question,
+  sopTitle,
+  stepFound,
+  status,
+}) {
+  try {
+    await fetch(
+      `https://coda.io/apis/v1/docs/${CODA_DOC_ID}/tables/${CODA_SOP_USAGE_TABLE_ID}/rows`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${CODA_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          rows: [
+            {
+              cells: [
+                { column: "User ID", value: userId },
+                { column: "Channel", value: channel },
+                { column: "Thread TS", value: threadTs },
+                { column: "Question", value: question },
+                { column: "SOP Title", value: sopTitle ?? "" },
+                { column: "Step Found", value: stepFound },
+                { column: "Status", value: status },
+                { column: "Timestamp", value: new Date().toISOString() },
+              ],
+            },
+          ],
+        }),
+      }
+    );
+  } catch (err) {
+    console.error("❌ Failed to log SOP usage to Coda", err);
+  }
+}
 
 
 // --- 🧠 Memory for per-user, per-thread SOP step tracking ---
@@ -434,6 +478,18 @@ if (context.lastSOP && lowerText.includes("what step")) {
       thread_ts,
       text: "I couldn’t find an SOP that matches your question.",
     });
+
+     // --- LOG TO CODA ---
+  await logSopUsageToCoda({
+    userId: event.user,
+    channel: event.channel,
+    threadTs: thread_ts,
+    question: query,
+    sopTitle: null,       // no SOP found
+    stepFound: false,     // no step found
+    status: "No SOP",     // mark as "No SOP"
+  });
+
     return;
   } else {
    
@@ -454,8 +510,20 @@ if (context.lastSOP && lowerText.includes("what step")) {
           thread_ts,
           text: `:warning: The top match SOP "${topMatch.title}" is deprecated, and no live related SOPs were found. Please check the SOP library for newer versions.`,
         });
+
+          await logSopUsageToCoda({
+            userId: event.user,
+            channel: event.channel,
+            threadTs: thread_ts,
+            question: query,
+            sopTitle: topMatch.title,
+            stepFound: false,
+            status: "Deprecated SOP",
+          });
         return;
       }
+
+      
 
       const relatedList = relatedSOPs
         .slice(0, 5)
@@ -550,6 +618,16 @@ ${sopContexts}`;
       channel: event.channel,
       thread_ts,
       text: finalText,
+    });
+
+    await logSopUsageToCoda({
+      userId: event.user,
+      channel: event.channel,
+      threadTs: thread_ts,
+      question: query,
+      sopTitle: validSOP.title,  // SOP that was used
+      stepFound: true,           // a step was found and answered
+      status: "Answered",        // mark as "Answered"
     });
 
     setUserContext(userId, thread_ts, {
@@ -666,6 +744,16 @@ ${sopContexts}
     thread_ts: threadId,
     text: gptRes.choices[0].message.content,
   });
+});
+
+await logSopUsageToCoda({
+  userId: event.user,
+  channel: event.channel,
+  threadTs: threadId,
+  question: query,
+  sopTitle: activeSOP.title,
+  stepFound: true,
+  status: "Follow-up Answer",
 });
 
 
