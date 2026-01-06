@@ -27,7 +27,7 @@ async function logSopUsageToCoda({
 }) {
   try {
     await fetch(
-      `https://coda.io/apis/v1/docs/${CODA_DOC_ID}/tables/${CODA_SOP_USAGE_TABLE_ID}/rows`,
+      `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_SOP_USAGE_TABLE_ID}/rows`,
       {
         method: "POST",
         headers: {
