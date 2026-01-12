@@ -262,7 +262,7 @@ function parseSteps(sopText) {
 //   return top;
 // }
 function filterRelevantSOPs(sops, query) {
-  const q = query.toLowerCase().replace(/[^\w\s]/g, "").trim();
+  const q = query.toLowerCase().replace(/[^\w\s']/g, "").trim();
   const queryWords = q.split(/\s+/).filter(Boolean);
 
   console.log(`\n🔍 Filtering SOPs for query: "${query}"`);
