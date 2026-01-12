@@ -266,7 +266,6 @@ function filterRelevantSOPs(sops, query) {
   const queryWords = q.split(/\s+/).filter(Boolean);
 
   console.log(`\n🔍 Filtering SOPs for query: "${query}"`);
-  console.log(`🧠 Query tokens: [${queryWords.join(", ")}]`);
 
   const scored = sops.map((s) => {
     const title = (s.title || "").toLowerCase();
@@ -303,23 +302,7 @@ function filterRelevantSOPs(sops, query) {
     }
     score += tagMatch * 10;
 
-    // 🧾 Per-SOP debug log (only if it scored at all)
-    if (score > 0) {
-      console.log(
-        `📄 "${s.title}" → score=${score} ` +
-        `(title:${titleMatch}, content:${contentMatch}, tags:${tagMatch})`
-      );
-    }
-
-    return {
-      ...s,
-      score,
-      _debug: {
-        titleMatch,
-        contentMatch,
-        tagMatch,
-      },
-    };
+    return { ...s, score };
   });
 
   // 🔃 Sort by score
@@ -327,20 +310,18 @@ function filterRelevantSOPs(sops, query) {
   const filtered = sorted.filter(s => s.score > 0);
 
   // 🎯 Select top results
-  const top = filtered.length > 0 ? filtered.slice(0, 3) : [];
+  const top = filtered.length > 0 ? filtered.slice(0, 3) : sorted.slice(0, 2);
 
-  // 🧠 Final decision log
+  // 🧠 Final decision log (match old style: only top SOP)
   if (top.length > 0) {
-    console.log(
-      `✅ Top match: "${top[0].title}" ` +
-      `(score ${top[0].score})`
-    );
+    console.log(`✅ Top match: "${top[0].title}" (score ${top[0].score})`);
   } else {
-    console.log("⚠️ No relevant SOP found (all scores = 0)");
+    console.log("⚠️ No relevant SOP found");
   }
 
   return top;
 }
+
 
 
 
