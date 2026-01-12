@@ -372,7 +372,7 @@ slackApp.event("app_mention", async ({ event, client }) => {
   const lowerText = query.toLowerCase();
 
   // ⏸ Pause / end conversation
-  if (["done", "thanks", "stop", "end", "resolved"].some(w => lowerText.includes(w))) {
+  if (["done", "end", "resolved"].some(w => lowerText.includes(w))) {
     setUserContext(userId, thread_ts, { state: "paused" });
 
     await client.chat.postMessage({
