@@ -221,112 +221,51 @@ function parseSteps(sopText) {
 }
 
 // --- Helper: filter relevant SOPs ---
-// function filterRelevantSOPs(sops, query) {
-//   const q = query.toLowerCase().replace(/[^\w\s]/g, "").trim();
-//   console.log(`\n🔍 Filtering SOPs for query: "${query}"`);
-
-//   const scored = sops.map((s) => {
-//     const title = (s.title || "").toLowerCase();
-//     const content = (s.sop || "").toLowerCase();
-//     let score = 0;
-
-//     const queryWords = q.split(/\s+/).filter(Boolean);
-//     const titleWords = title.split(/\s+/).filter(Boolean);
-
-//     let matchCount = 0;
-//     for (const w of queryWords) {
-//       if (titleWords.some((tw) => tw.includes(w))) matchCount++;
-//     }
-
-//     score += matchCount * 10;
-
-//     let contentMatchCount = 0;
-//     for (const w of queryWords) {
-//       if (content.includes(w)) contentMatchCount++;
-//     }
-//     score += contentMatchCount * 2;
-
-//     return { ...s, score };
-//   });
-
-//   const sorted = scored.sort((a, b) => b.score - a.score);
-//   const filtered = sorted.filter((s) => s.score > 0);
-
-//   const top = filtered.length > 0 ? filtered.slice(0, 3) : sorted.slice(0, 2);
-//   if (top.length > 0) {
-//     console.log(`✅ Top match: "${top[0].title}" (score ${top[0].score})`);
-//   } else {
-//     console.log("⚠️ No relevant SOP found");
-//   }
-
-//   return top;
-// }
 function filterRelevantSOPs(sops, query) {
-  const normalize = (str) =>
-    (str || "")
-      .toLowerCase()
-      .replace(/[^\w\s]/g, "")    // remove punctuation
-      .normalize("NFKD")           // normalize unicode
-      .trim();
-
-  const stemWord = (word) => {
-    // Very basic stemming: remove plural 's' (e.g., "submissions" -> "submission")
-    return word.replace(/s$/, "");
-  };
-
-  const q = normalize(query);
-  const queryWords = q.split(/\s+/).map(stemWord).filter(Boolean);
-
-  console.log(`\n🔍 Filtering SOPs for query: "${query}" → words: [${queryWords.join(", ")}]`);
+  const q = query.toLowerCase().replace(/[^\w\s]/g, "").trim();
+  console.log(`\n🔍 Filtering SOPs for query: "${query}"`);
 
   const scored = sops.map((s) => {
-    const title = normalize(s.title);
-    const content = normalize(s.sop);
-    const tagsRaw = s.tags || "";
-    const tags = Array.isArray(tagsRaw)
-      ? tagsRaw.map(t => normalize(t))
-      : tagsRaw.split(/[,;|]/).map(t => normalize(t)).filter(Boolean);
-
+    const title = (s.title || "").toLowerCase();
+    const content = (s.sop || "").toLowerCase();
     let score = 0;
 
-    // --- Title match ---
-    let titleMatch = 0;
-    const titleWords = title.split(/\s+/).map(stemWord);
-    for (const w of queryWords) {
-      if (titleWords.some(tw => tw.includes(w))) titleMatch++;
-    }
-    score += titleMatch * 10;
+    const queryWords = q.split(/\s+/).filter(Boolean);
+    const titleWords = title.split(/\s+/).filter(Boolean);
 
-    // --- Content match ---
-    let contentMatch = 0;
-    const contentWords = content.split(/\s+/).map(stemWord);
+    let matchCount = 0;
     for (const w of queryWords) {
-      if (contentWords.some(cw => cw.includes(w))) contentMatch++;
+      if (titleWords.some((tw) => tw.includes(w))) matchCount++;
     }
-    score += contentMatch * 2;
 
-    // --- Tag match ---
+    score += matchCount * 10;
+
+    let contentMatchCount = 0;
+    for (const w of queryWords) {
+      if (content.includes(w)) contentMatchCount++;
+    }
+    score += contentMatchCount * 2;
+
+
     let tagMatch = 0;
     for (const w of queryWords) {
       for (const tag of tags) {
-        if (tag === w) tagMatch += 3;
-        else if (tag.includes(w)) tagMatch += 1;
+        if (tag === w) {
+          tagMatch += 3;       // exact match = strong
+        } else if (tag.includes(w)) {
+          tagMatch += 1;       // partial match = soft
+        }
       }
     }
     score += tagMatch * 10;
 
-    // --- Debug per SOP ---
-    console.log(`📄 "${s.title}" → score=${score} (title:${titleMatch}, content:${contentMatch}, tags:${tagMatch})`);
-
     return { ...s, score };
   });
 
-  // --- Sort & filter ---
   const sorted = scored.sort((a, b) => b.score - a.score);
-  const filtered = sorted.filter(s => s.score > 0);
+  const filtered = sorted.filter((s) => s.score > 0);
 
   const top = filtered.length > 0 ? filtered.slice(0, 3) : sorted.slice(0, 2);
-
   if (top.length > 0) {
     console.log(`✅ Top match: "${top[0].title}" (score ${top[0].score})`);
   } else {
@@ -337,11 +276,82 @@ function filterRelevantSOPs(sops, query) {
 }
 
 
+// function filterRelevantSOPs(sops, query) {
+//   const q = query.toLowerCase().replace(/[^\w\s]/g, "").trim();
+//   const queryWords = q.split(/\s+/).filter(Boolean);
 
+//   console.log(`\n🔍 Filtering SOPs for query: "${query}"`);
 
+//   const scored = sops.map((s) => {
+//     const title = (s.title || "").toLowerCase();
+//     const content = (s.sop || "").toLowerCase();
+//     const tagsRaw = s.tags || "";
+//     const tags = Array.isArray(tagsRaw)
+//       ? tagsRaw.map(t => t.toLowerCase().trim())
+//       : tagsRaw.toLowerCase().split(/[,;|]/).map(t => t.trim()).filter(Boolean);
+
+//     let score = 0;
+
+//     //
+//     // 🔹 1. Title match score
+//     //
+//     let titleMatch = 0;
+//     const titleWords = title.split(/\s+/).filter(Boolean);
+//     for (const w of queryWords) {
+//       if (titleWords.some(tw => tw.includes(w))) titleMatch++;
+//     }
+//     score += titleMatch * 10;
+
+//     //
+//     // 🔹 2. Content match score
+//     //
+//     let contentMatch = 0;
+//     for (const w of queryWords) {
+//       if (content.includes(w)) contentMatch++;
+//     }
+//     score += contentMatch * 2;
+
+//     //
+//     // 🔹 3. NEW: Tag match score
+//     //
+//     let tagMatch = 0;
+//     for (const w of queryWords) {
+//       for (const tag of tags) {
+//         if (tag === w) {
+//           tagMatch += 3;       // exact match = strong
+//         } else if (tag.includes(w)) {
+//           tagMatch += 1;       // partial match = soft
+//         }
+//       }
+//     }
+//     score += tagMatch * 10;    // Tag matches carry heavier weight
+
+//     //
+//     // We attach the final score
+//     //
+//     return { ...s, score };
+//   });
+
+//   //
+//   // Sorting & selecting top
+//   //
+//   const sorted = scored.sort((a, b) => b.score - a.score);
+//   const filtered = sorted.filter(s => s.score > 0);
+
+//   const top = filtered.length > 0 ? filtered.slice(0, 3) : sorted.slice(0, 2);
+
+//   if (top.length > 0) {
+//     console.log(`✅ Top match: "${top[0].title}" (score ${top[0].score})`);
+//   } else {
+//     console.log("⚠️ No relevant SOP found");
+//   }
+
+//   return top;
+// }
 
 
 // --- Handle app mention ---
+
 slackApp.event("app_mention", async ({ event, client }) => {
   const userId = event.user;
   const query = event.text.replace(/<@[^>]+>/, "").trim();
@@ -369,7 +379,7 @@ slackApp.event("app_mention", async ({ event, client }) => {
   const lowerText = query.toLowerCase();
 
   // ⏸ Pause / end conversation
-  if (["done", "end", "resolved"].some(w => lowerText.includes(w))) {
+  if (["done", "thanks", "stop", "end", "resolved"].some(w => lowerText.includes(w))) {
     setUserContext(userId, thread_ts, { state: "paused" });
 
     await client.chat.postMessage({
