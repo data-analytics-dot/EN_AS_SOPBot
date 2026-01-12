@@ -266,6 +266,7 @@ function filterRelevantSOPs(sops, query) {
   const queryWords = q.split(/\s+/).filter(Boolean);
 
   console.log(`\n🔍 Filtering SOPs for query: "${query}"`);
+  console.log(`🧠 Query tokens: [${queryWords.join(", ")}]`);
 
   const scored = sops.map((s) => {
     const title = (s.title || "").toLowerCase();
@@ -277,9 +278,7 @@ function filterRelevantSOPs(sops, query) {
 
     let score = 0;
 
-    //
-    // 🔹 1. Title match score
-    //
+    // 🔹 Title match
     let titleMatch = 0;
     const titleWords = title.split(/\s+/).filter(Boolean);
     for (const w of queryWords) {
@@ -287,52 +286,62 @@ function filterRelevantSOPs(sops, query) {
     }
     score += titleMatch * 10;
 
-    //
-    // 🔹 2. Content match score
-    //
+    // 🔹 Content match
     let contentMatch = 0;
     for (const w of queryWords) {
       if (content.includes(w)) contentMatch++;
     }
     score += contentMatch * 2;
 
-    //
-    // 🔹 3. NEW: Tag match score
-    //
+    // 🔹 Tag match
     let tagMatch = 0;
     for (const w of queryWords) {
       for (const tag of tags) {
-        if (tag === w) {
-          tagMatch += 3;       // exact match = strong
-        } else if (tag.includes(w)) {
-          tagMatch += 1;       // partial match = soft
-        }
+        if (tag === w) tagMatch += 3;
+        else if (tag.includes(w)) tagMatch += 1;
       }
     }
-    score += tagMatch * 10;    // Tag matches carry heavier weight
+    score += tagMatch * 10;
 
-    //
-    // We attach the final score
-    //
-    return { ...s, score };
+    // 🧾 Per-SOP debug log (only if it scored at all)
+    if (score > 0) {
+      console.log(
+        `📄 "${s.title}" → score=${score} ` +
+        `(title:${titleMatch}, content:${contentMatch}, tags:${tagMatch})`
+      );
+    }
+
+    return {
+      ...s,
+      score,
+      _debug: {
+        titleMatch,
+        contentMatch,
+        tagMatch,
+      },
+    };
   });
 
-  //
-  // Sorting & selecting top
-  //
+  // 🔃 Sort by score
   const sorted = scored.sort((a, b) => b.score - a.score);
   const filtered = sorted.filter(s => s.score > 0);
 
-  const top = filtered.length > 0 ? filtered.slice(0, 3) : sorted.slice(0, 2);
+  // 🎯 Select top results
+  const top = filtered.length > 0 ? filtered.slice(0, 3) : [];
 
+  // 🧠 Final decision log
   if (top.length > 0) {
-    console.log(`✅ Top match: "${top[0].title}" (score ${top[0].score})`);
+    console.log(
+      `✅ Top match: "${top[0].title}" ` +
+      `(score ${top[0].score})`
+    );
   } else {
-    console.log("⚠️ No relevant SOP found");
+    console.log("⚠️ No relevant SOP found (all scores = 0)");
   }
 
   return top;
 }
+
 
 
 // --- Handle app mention ---
