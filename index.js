@@ -606,10 +606,11 @@ Rules:
 2. Then, find the SINGLE most relevant step (or sub-steps) inside that SOP, make sure it is relevant to the question asked and include the step number in the message.
 3. Answer ONLY from that step. Do NOT include unrelated steps, summaries, or introductions.
 4. Paraphrase concisely in instructional style, second person ("you"), with clear action verbs.
-5. Always add one insight:
-   - 💡 Tip (efficiency)
-   - ⚠️ Warning (risk)
-   - 📝 Note (context)
+5. After explaining the step, include any relevant follow-through guidance:
+   - 💡 Tips that help execute the step more efficiently or correctly
+   - ⚠️ Warnings or cautions if there are common mistakes, risks, or edge cases
+   - 📝 Notes for important context or clarifications
+   Only include items that are directly relevant to the step. Do not force all types.
 6. End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
 7. If no SOP or step matches, respond: "I couldn’t find an SOP that matches your question."
 
