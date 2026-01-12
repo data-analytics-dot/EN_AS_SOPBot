@@ -262,41 +262,50 @@ function parseSteps(sopText) {
 //   return top;
 // }
 function filterRelevantSOPs(sops, query) {
-  const q = query.toLowerCase()
-    .replace(/[^\w\s]/g, "")
-    .normalize("NFKD")
-    .trim();
+  const normalize = (str) =>
+    (str || "")
+      .toLowerCase()
+      .replace(/[^\w\s]/g, "")    // remove punctuation
+      .normalize("NFKD")           // normalize unicode
+      .trim();
 
-  const queryWords = q.split(/\s+/).filter(Boolean);
+  const stemWord = (word) => {
+    // Very basic stemming: remove plural 's' (e.g., "submissions" -> "submission")
+    return word.replace(/s$/, "");
+  };
 
-  console.log(`\n🔍 Filtering SOPs for query: "${query}"`);
+  const q = normalize(query);
+  const queryWords = q.split(/\s+/).map(stemWord).filter(Boolean);
+
+  console.log(`\n🔍 Filtering SOPs for query: "${query}" → words: [${queryWords.join(", ")}]`);
 
   const scored = sops.map((s) => {
-    const title = (s.title || "").toLowerCase();
-    const content = (s.sop || "").toLowerCase();
+    const title = normalize(s.title);
+    const content = normalize(s.sop);
     const tagsRaw = s.tags || "";
     const tags = Array.isArray(tagsRaw)
-      ? tagsRaw.map(t => t.toLowerCase().trim())
-      : tagsRaw.toLowerCase().split(/[,;|]/).map(t => t.trim()).filter(Boolean);
+      ? tagsRaw.map(t => normalize(t))
+      : tagsRaw.split(/[,;|]/).map(t => normalize(t)).filter(Boolean);
 
     let score = 0;
 
-    // 🔹 Title match
+    // --- Title match ---
     let titleMatch = 0;
-    const titleWords = title.split(/\s+/).filter(Boolean);
+    const titleWords = title.split(/\s+/).map(stemWord);
     for (const w of queryWords) {
       if (titleWords.some(tw => tw.includes(w))) titleMatch++;
     }
     score += titleMatch * 10;
 
-    // 🔹 Content match
+    // --- Content match ---
     let contentMatch = 0;
+    const contentWords = content.split(/\s+/).map(stemWord);
     for (const w of queryWords) {
-      if (content.includes(w)) contentMatch++;
+      if (contentWords.some(cw => cw.includes(w))) contentMatch++;
     }
     score += contentMatch * 2;
 
-    // 🔹 Tag match
+    // --- Tag match ---
     let tagMatch = 0;
     for (const w of queryWords) {
       for (const tag of tags) {
@@ -306,19 +315,16 @@ function filterRelevantSOPs(sops, query) {
     }
     score += tagMatch * 10;
 
-    // 🧾 Per-SOP debug log (like old function)
-    if (score > 0) {
-      console.log(`📄 "${s.title}" → score=${score} (title:${titleMatch}, content:${contentMatch}, tags:${tagMatch})`);
-    }
+    // --- Debug per SOP ---
+    console.log(`📄 "${s.title}" → score=${score} (title:${titleMatch}, content:${contentMatch}, tags:${tagMatch})`);
 
     return { ...s, score };
   });
 
-  // 🔃 Sort by score
+  // --- Sort & filter ---
   const sorted = scored.sort((a, b) => b.score - a.score);
   const filtered = sorted.filter(s => s.score > 0);
 
-  // 🎯 Top SOP selection
   const top = filtered.length > 0 ? filtered.slice(0, 3) : sorted.slice(0, 2);
 
   if (top.length > 0) {
@@ -329,6 +335,7 @@ function filterRelevantSOPs(sops, query) {
 
   return top;
 }
+
 
 
 
