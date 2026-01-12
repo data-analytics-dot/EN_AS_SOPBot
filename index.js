@@ -14,6 +14,7 @@ const SAVE_DELAY_MS = 500;
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS) || 1000 * 60 * 60; // 1 hour
 const CODA_SOP_USAGE_TABLE_ID = process.env.CODA_SOP_USAGE_TABLE_ID;
 const CODA_DOC_ID_LOGS = process.env.CODA_DOC_ID_LOGS;
+const CODA_API_TOKEN = process.env.CODA_API_TOKEN;
 
 
 async function logSopUsageToCoda({
