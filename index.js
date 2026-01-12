@@ -262,7 +262,11 @@ function parseSteps(sopText) {
 //   return top;
 // }
 function filterRelevantSOPs(sops, query) {
-  const q = query.toLowerCase().replace(/[^\w\s']/g, "").trim();
+  const q = query.toLowerCase()
+    .replace(/[^\w\s]/g, "")
+    .normalize("NFKD")
+    .trim();
+
   const queryWords = q.split(/\s+/).filter(Boolean);
 
   console.log(`\n🔍 Filtering SOPs for query: "${query}"`);
@@ -302,6 +306,11 @@ function filterRelevantSOPs(sops, query) {
     }
     score += tagMatch * 10;
 
+    // 🧾 Per-SOP debug log (like old function)
+    if (score > 0) {
+      console.log(`📄 "${s.title}" → score=${score} (title:${titleMatch}, content:${contentMatch}, tags:${tagMatch})`);
+    }
+
     return { ...s, score };
   });
 
@@ -309,10 +318,9 @@ function filterRelevantSOPs(sops, query) {
   const sorted = scored.sort((a, b) => b.score - a.score);
   const filtered = sorted.filter(s => s.score > 0);
 
-  // 🎯 Select top results
+  // 🎯 Top SOP selection
   const top = filtered.length > 0 ? filtered.slice(0, 3) : sorted.slice(0, 2);
 
-  // 🧠 Final decision log (match old style: only top SOP)
   if (top.length > 0) {
     console.log(`✅ Top match: "${top[0].title}" (score ${top[0].score})`);
   } else {
@@ -321,6 +329,7 @@ function filterRelevantSOPs(sops, query) {
 
   return top;
 }
+
 
 
 
