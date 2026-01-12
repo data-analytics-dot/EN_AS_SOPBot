@@ -229,6 +229,10 @@ function filterRelevantSOPs(sops, query) {
     const title = (s.title || "").toLowerCase();
     const content = (s.sop || "").toLowerCase();
     let score = 0;
+    const tagsRaw = s.tags || "";
+    const tags = Array.isArray(tagsRaw)
+      ? tagsRaw.map(t => t.toLowerCase().trim())
+      : tagsRaw.toLowerCase().split(/[,;|]/).map(t => t.trim()).filter(Boolean);
 
     const queryWords = q.split(/\s+/).filter(Boolean);
     const titleWords = title.split(/\s+/).filter(Boolean);
