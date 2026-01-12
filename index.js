@@ -39,14 +39,14 @@ async function logSopUsageToCoda({
           rows: [
             {
               cells: [
-                { column: "User ID", value: userId },
-                { column: "Channel", value: channel },
-                { column: "Thread TS", value: threadTs },
-                { column: "Question", value: question },
-                { column: "SOP Title", value: sopTitle ?? "" },
-                { column: "Step Found", value: stepFound },
-                { column: "Status", value: status },
-                { column: "Timestamp", value: new Date().toISOString() },
+                { column: "c-IwS9YVVcIq", value: userId },
+                { column: "c-RNSEENcCdA", value: channel },
+                { column: "c-vJpPj2lNsj", value: threadTs },
+                { column: "c-dgNIZbOVZQ", value: question },
+                { column: "c-F8uEMuDPA-", value: sopTitle ?? "" },
+                { column: "c-sF9gP8NODB", value: stepFound },
+                { column: "c-ZqQoPmZ3M0", value: status },
+                { column: "c-PW0T6e6Kg5", value: new Date().toISOString() },
               ],
             },
           ],
