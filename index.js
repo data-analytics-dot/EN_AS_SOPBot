@@ -17,17 +17,9 @@ const CODA_DOC_ID_LOGS = process.env.CODA_DOC_ID_LOGS;
 const CODA_API_TOKEN = process.env.CODA_API_TOKEN;
 
 
-async function logSopUsageToCoda({
-  userId,
-  channel,
-  threadTs,
-  question,
-  sopTitle,
-  stepFound,
-  status,
-}) {
+async function logSopUsageToCoda(payload) {
   try {
-    await fetch(
+    const res = await fetch(
       `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows`,
       {
         method: "POST",
@@ -39,13 +31,13 @@ async function logSopUsageToCoda({
           rows: [
             {
               cells: [
-                { column: "c-IwS9YVVcIq", value: userId },
-                { column: "c-RNSEENcCdA", value: channel },
-                { column: "c-vJpPj2lNsj", value: threadTs },
-                { column: "c-dgNIZbOVZQ", value: question },
-                { column: "c-F8uEMuDPA-", value: sopTitle ?? "" },
-                { column: "c-sF9gP8NODB", value: stepFound },
-                { column: "c-ZqQoPmZ3M0", value: status },
+                { column: "c-IwS9YVVcIq", value: payload.userId },
+                { column: "c-RNSEENcCdA", value: payload.channel },
+                { column: "c-vJpPj2lNsj", value: String(payload.threadTs) },
+                { column: "c-dgNIZbOVZQ", value: payload.question },
+                { column: "c-F8uEMuDPA-", value: payload.sopTitle ?? "" },
+                { column: "c-sF9gP8NODB", value: payload.stepFound ? "Yes" : "No" },
+                { column: "c-ZqQoPmZ3M0", value: payload.status },
                 { column: "c-PW0T6e6Kg5", value: new Date().toISOString() },
               ],
             },
@@ -53,10 +45,15 @@ async function logSopUsageToCoda({
         }),
       }
     );
+
+    if (!res.ok) {
+      console.error("❌ Coda log failed:", res.status, await res.text());
+    }
   } catch (err) {
     console.error("❌ Failed to log SOP usage to Coda", err);
   }
 }
+
 
 
 // --- 🧠 Memory for per-user, per-thread SOP step tracking ---
@@ -185,7 +182,9 @@ async function fetchSOPs() {
       link: v["SOP Traceable Link"] ?? "",
       status: v.Status ?? "",
       author: v.Author ?? "",
-      tags: v["Tags Bot Result"] ?? "",
+      tagsBot: v["Tags Bot Result"] ?? "",
+      tagsManual: v["Tags Manual"] ?? "",
+
     };
   });
 
@@ -229,17 +228,24 @@ function filterRelevantSOPs(sops, query) {
     const title = (s.title || "").toLowerCase();
     const content = (s.sop || "").toLowerCase();
     let score = 0;
-    const tagsRaw = s.tags;
+    const tagsRaw = [
+      ...(Array.isArray(s.tagsBot) ? s.tagsBot : [s.tagsBot]),
+      ...(Array.isArray(s.tagsManual) ? s.tagsManual : [s.tagsManual]),
+    ];
 
-    const tags = Array.isArray(tagsRaw)
-      ? tagsRaw.map(t => String(t).toLowerCase().trim())
-      : typeof tagsRaw === "string"
-        ? tagsRaw
-            .toLowerCase()
-            .split(/[,;|]/)
-            .map(t => t.trim())
-            .filter(Boolean)
-        : [];
+
+    const tags = tagsRaw
+      .flatMap((t) =>
+        typeof t === "string"
+          ? t.toLowerCase().split(/[,;|]/)
+          : []
+      )
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    // remove duplicates
+    const uniqueTags = [...new Set(tags)];
+
 
 
     const queryWords = q.split(/\s+/).filter(Boolean);
@@ -261,7 +267,7 @@ function filterRelevantSOPs(sops, query) {
 
     let tagMatch = 0;
     for (const w of queryWords) {
-      for (const tag of tags) {
+      for (const tag of uniqueTags) {
         if (tag === w) {
           tagMatch += 3;       // exact match = strong
         } else if (tag.includes(w)) {
@@ -391,7 +397,7 @@ slackApp.event("app_mention", async ({ event, client }) => {
   const lowerText = query.toLowerCase();
 
   // ⏸ Pause / end conversation
-  if (["done", "thanks", "stop", "end", "resolved"].some(w => lowerText.includes(w))) {
+  if (["done", "stop", "end", "resolved"].some(w => lowerText.includes(w))) {
     setUserContext(userId, thread_ts, { state: "paused" });
 
     await client.chat.postMessage({
