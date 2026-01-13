@@ -34,7 +34,7 @@ async function logSopUsageToCoda(client, payload) {
           rows: [
             {
               cells: [
-                { column: "c-NameColumnId", value: userName },
+                { column: "c-oZXdS3AAj5", value: userName },
                 { column: "c-IwS9YVVcIq", value: payload.userId },
                 { column: "c-RNSEENcCdA", value: payload.channel },
                 { column: "c-vJpPj2lNsj", value: String(payload.threadTs) },
