@@ -17,8 +17,11 @@ const CODA_DOC_ID_LOGS = process.env.CODA_DOC_ID_LOGS;
 const CODA_API_TOKEN = process.env.CODA_API_TOKEN;
 
 
-async function logSopUsageToCoda(payload) {
+async function logSopUsageToCoda(client, payload) {
   try {
+
+    const userName = payload.userName || await getSlackUserName(client, payload.userId);
+
     const res = await fetch(
       `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows`,
       {
@@ -31,12 +34,13 @@ async function logSopUsageToCoda(payload) {
           rows: [
             {
               cells: [
+                { column: "c-NameColumnId", value: userName },
                 { column: "c-IwS9YVVcIq", value: payload.userId },
                 { column: "c-RNSEENcCdA", value: payload.channel },
                 { column: "c-vJpPj2lNsj", value: String(payload.threadTs) },
                 { column: "c-dgNIZbOVZQ", value: payload.question },
                 { column: "c-F8uEMuDPA-", value: payload.sopTitle ?? "" },
-                { column: "c-sF9gP8NODB", value: payload.stepFound ? "Yes" : "No" },
+                { column: "c-sF9gP8NODB", value: payload.stepFound},
                 { column: "c-ZqQoPmZ3M0", value: payload.status },
                 { column: "c-PW0T6e6Kg5", value: new Date().toISOString() },
               ],
@@ -293,6 +297,20 @@ function filterRelevantSOPs(sops, query) {
   return top;
 }
 
+async function getSlackUserName(client, userId) {
+  try {
+    const res = await client.users.info({ user: userId });
+    if (res.ok) {
+      // Try display_name first, fallback to real_name
+      return res.user.profile.display_name || res.user.real_name || userId;
+    }
+    return userId; // fallback if API fails
+  } catch (err) {
+    console.error("❌ Failed to get Slack user name:", err);
+    return userId;
+  }
+}
+
 
 // function filterRelevantSOPs(sops, query) {
 //   const q = query.toLowerCase().replace(/[^\w\s]/g, "").trim();
@@ -397,7 +415,7 @@ slackApp.event("app_mention", async ({ event, client }) => {
   const lowerText = query.toLowerCase();
 
   // ⏸ Pause / end conversation
-  if (["done", "stop", "end", "resolved"].some(w => lowerText.includes(w))) {
+  if (["done","resolved"].some(w => lowerText.includes(w))) {
     setUserContext(userId, thread_ts, { state: "paused" });
 
     await client.chat.postMessage({
@@ -514,16 +532,19 @@ if (context.lastSOP && lowerText.includes("what step")) {
       text: "I couldn’t find an SOP that matches your question.",
     });
 
+  
+
      // --- LOG TO CODA ---
-  await logSopUsageToCoda({
-    userId: userId,
+    await logSopUsageToCoda(client, {
+    userId: event.user,
     channel: event.channel,
     threadTs: thread_ts,
     question: query,
-    sopTitle: null,       // no SOP found
-    stepFound: false,     // no step found
-    status: "No SOP",     // mark as "No SOP"
+    sopTitle: validSOP?.title ?? null,
+    stepFound: !!validSOP, // true if SOP was used
+    status: validSOP ? "Answered" : "No SOP",
   });
+
 
     return;
   } else {
@@ -546,7 +567,7 @@ if (context.lastSOP && lowerText.includes("what step")) {
           text: `:warning: The top match SOP "${topMatch.title}" is deprecated, and no live related SOPs were found. Please check the SOP library for newer versions.`,
         });
 
-          await logSopUsageToCoda({
+          await logSopUsageToCoda(client, {
             userId: userId,
             channel: event.channel,
             threadTs: thread_ts,
@@ -658,7 +679,7 @@ ${sopContexts}`;
       text: finalText,
     });
 
-    await logSopUsageToCoda({
+    await logSopUsageToCoda(client, {
       userId: userId,
       channel: event.channel,
       threadTs: thread_ts,
@@ -729,7 +750,7 @@ slackApp.event("message", async ({ event, client }) => {
   }
 
   // --- Pause / end commands ---
-  const pauseCommands = ["done", "thanks", "stop", "end", "resolved"];
+  const pauseCommands = ["done", "resolved"];
   if (pauseCommands.some(cmd => lowerText.includes(cmd))) {
     setUserContext(userId, threadId, { state: "paused" });
     await client.chat.postMessage({
@@ -783,7 +804,7 @@ ${sopContexts}
     text: gptRes.choices[0].message.content,
   });
 
-  await logSopUsageToCoda({
+  await logSopUsageToCoda(client, {
     userId: userId,
     channel: event.channel,
     threadTs: threadId,
