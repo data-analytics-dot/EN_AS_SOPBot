@@ -40,7 +40,7 @@ async function logSopUsageToCoda(client, payload) {
                 { column: "c-vJpPj2lNsj", value: String(payload.threadTs) },
                 { column: "c-dgNIZbOVZQ", value: payload.question },
                 { column: "c-F8uEMuDPA-", value: payload.sopTitle ?? "" },
-                { column: "c-sF9gP8NODB", value: payload.stepFound},
+                { column: "c-sF9gP8NODB", value: payload.stepFound ? "Yes" : "No"},
                 { column: "c-ZqQoPmZ3M0", value: payload.status },
                 { column: "c-PW0T6e6Kg5", value: new Date().toISOString() },
               ],
