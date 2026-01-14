@@ -684,10 +684,11 @@ ${sopContexts}`;
       channel: event.channel,
       threadTs: thread_ts,
       question: query,
-      sopTitle: validSOP.title,  // SOP that was used
-      stepFound: true,           // a step was found and answered
-      status: "Answered",        // mark as "Answered"
+      sopTitle: finalText === NO_SOP_RESPONSE ? null : validSOP.title,
+      stepFound: finalText === NO_SOP_RESPONSE ? false : true,
+      status: finalText === NO_SOP_RESPONSE ? "No SOP" : "Answered",
     });
+
 
     setUserContext(userId, thread_ts, {
       lastSOP: validSOP.title,
@@ -798,6 +799,9 @@ ${sopContexts}
     temperature: 0.2,
   });
 
+  const answer = gptRes.choices[0].message?.content ?? "No answer.";
+  const NO_SOP_RESPONSE = "I couldn’t find an SOP that matches your question.";
+
   await client.chat.postMessage({
     channel: event.channel,
     thread_ts: threadId,
@@ -805,13 +809,13 @@ ${sopContexts}
   });
 
   await logSopUsageToCoda(client, {
-    userId: userId,
-    channel: event.channel,
-    threadTs: threadId,
-    question: query,
-    sopTitle: activeSOP.title,
-    stepFound: true,
-    status: "Follow-up Answer",
+      userId: userId,
+      channel: event.channel,
+      threadTs: threadId,
+      question: query,
+      sopTitle: answer === NO_SOP_RESPONSE ? null : activeSOP.title,
+      stepFound: answer === NO_SOP_RESPONSE ? false : true,
+      status: answer === NO_SOP_RESPONSE ? "No SOP" : "Follow-up Answer",
   });
 
 });
