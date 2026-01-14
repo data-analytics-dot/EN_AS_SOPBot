@@ -533,7 +533,7 @@ if (context.lastSOP && lowerText.includes("what step")) {
     });
 
   
-
+    const validSOP = null;
      // --- LOG TO CODA ---
     await logSopUsageToCoda(client, {
     userId: event.user,
@@ -566,7 +566,7 @@ if (context.lastSOP && lowerText.includes("what step")) {
           thread_ts,
           text: `:warning: The top match SOP "${topMatch.title}" is deprecated, and no live related SOPs were found. Please check the SOP library for newer versions.`,
         });
-
+          
           await logSopUsageToCoda(client, {
             userId: userId,
             channel: event.channel,
