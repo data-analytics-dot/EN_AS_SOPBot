@@ -187,7 +187,7 @@ async function fetchSOPs() {
       status: v.Status ?? "",
       author: v.Author ?? "",
       tagsBot: v["Tags Bot Result"] ?? "",
-      tagsManual: v["Tags Manual"] ?? "",
+      tagsManual: v["keywords"] ?? "",
 
     };
   });
