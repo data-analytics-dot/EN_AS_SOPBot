@@ -679,6 +679,8 @@ ${sopContexts}`;
       text: finalText,
     });
 
+    
+
     await logSopUsageToCoda(client, {
       userId: userId,
       channel: event.channel,
@@ -688,6 +690,12 @@ ${sopContexts}`;
       stepFound: finalText === NO_SOP_RESPONSE ? false : true,
       status: finalText === NO_SOP_RESPONSE ? "No SOP" : "Answered",
     });
+
+    // stop replying unrelated sops if no sop is found
+    if (isNoSop) {
+      resetUserContext(userId, thread_ts);
+      return;
+    }
 
 
     setUserContext(userId, thread_ts, {
