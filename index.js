@@ -15,12 +15,24 @@ const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS) || 1000 * 60 * 60; // 
 const CODA_TABLE_ID_LOGS = process.env.CODA_TABLE_ID_LOGS;
 const CODA_DOC_ID_LOGS = process.env.CODA_DOC_ID_LOGS;
 const CODA_API_TOKEN = process.env.CODA_API_TOKEN;
+const CODA_TABLE_ID_PHASES = process.env.CODA_TABLE_ID_PHASES;
+const PHASE_NAME_COLUMN_ID = process.env.PHASE_NAME_COLUMN_ID;
+const PHASE_START_COLUMN_ID = process.env.PHASE_START_COLUMN_ID;
+const PHASE_END_COLUMN_ID = process.env.PHASE_END_COLUMN_ID;
 
 
 async function logSopUsageToCoda(client, payload) {
   try {
 
     const userName = payload.userName || await getSlackUserName(client, payload.userId);
+
+    // 🚀 Fetch phase info
+    const phases = await fetchPhases();
+    const activePhase = getActivePhase(phases);
+
+    const phaseName = activePhase
+      ? activePhase.values.find(v => v.column === PHASE_NAME_COLUMN_ID).value
+      : null;
 
     const res = await fetch(
       `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows`,
@@ -43,6 +55,7 @@ async function logSopUsageToCoda(client, payload) {
                 { column: "c-sF9gP8NODB", value: payload.stepFound ? "Yes" : "No"},
                 { column: "c-ZqQoPmZ3M0", value: payload.status },
                 { column: "c-y669WSSbMO", value: payload.gptResponse ?? "" },
+                { column: "c-awpUarmk0l", value: phaseName },
                 { column: "c-PW0T6e6Kg5", value: new Date().toISOString() },
               ],
             },
@@ -59,6 +72,50 @@ async function logSopUsageToCoda(client, payload) {
   }
 }
 
+async function fetchPhases() {
+  const res = await fetch(
+    `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_PHASES}/rows`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${CODA_API_TOKEN}`,
+      },
+    }
+  );
+
+  if (!res.ok) {
+    console.error("❌ Failed to fetch phases:", res.status, await res.text());
+    return [];
+  }
+
+  const data = await res.json();
+  return data.items || [];
+}
+function getActivePhase(phases) {
+  const now = new Date();
+
+  // Convert Coda dates to JS Date
+  const parseDate = (d) => (d ? new Date(d) : null);
+
+  // Sort by start date so latest start date wins if overlap
+  phases.sort((a, b) => new Date(a.values.find(v => v.column === PHASE_START_COLUMN_ID).value) - new Date(b.values.find(v => v.column === PHASE_START_COLUMN_ID).value));
+
+  for (const phase of phases) {
+    const startDate = parseDate(phase.values.find(v => v.column === PHASE_START_COLUMN_ID).value);
+    const endDate = parseDate(phase.values.find(v => v.column === PHASE_END_COLUMN_ID)?.value);
+
+    if (!startDate) continue;
+
+    // If endDate is null, it's ongoing
+    if (endDate == null) {
+      if (now >= startDate) return phase;
+    } else {
+      if (now >= startDate && now <= endDate) return phase;
+    }
+  }
+
+  return null;
+}
 
 
 // --- 🧠 Memory for per-user, per-thread SOP step tracking ---
