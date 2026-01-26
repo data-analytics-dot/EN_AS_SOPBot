@@ -31,7 +31,7 @@ async function logSopUsageToCoda(client, payload) {
     const activePhase = getActivePhase(phases);
 
     const phaseName = activePhase
-      ? activePhase.values.find(v => v.column === PHASE_NAME_COLUMN_ID).value
+      ? activePhase.values[PHASE_NAME_COLUMN_ID]
       : null;
 
     const res = await fetch(
@@ -94,20 +94,23 @@ async function fetchPhases() {
 function getActivePhase(phases) {
   const now = new Date();
 
-  // Convert Coda dates to JS Date
   const parseDate = (d) => (d ? new Date(d) : null);
 
   // Sort by start date so latest start date wins if overlap
-  phases.sort((a, b) => new Date(a.values.find(v => v.column === PHASE_START_COLUMN_ID).value) - new Date(b.values.find(v => v.column === PHASE_START_COLUMN_ID).value));
+  phases.sort((a, b) => {
+    const aStart = parseDate(a.values[PHASE_START_COLUMN_ID]);
+    const bStart = parseDate(b.values[PHASE_START_COLUMN_ID]);
+    return aStart - bStart;
+  });
 
   for (const phase of phases) {
-    const startDate = parseDate(phase.values.find(v => v.column === PHASE_START_COLUMN_ID).value);
-    const endDate = parseDate(phase.values.find(v => v.column === PHASE_END_COLUMN_ID)?.value);
+    const startDate = parseDate(phase.values[PHASE_START_COLUMN_ID]);
+    const endDate = parseDate(phase.values[PHASE_END_COLUMN_ID]);
 
     if (!startDate) continue;
 
     // If endDate is null, it's ongoing
-    if (endDate == null) {
+    if (!endDate) {
       if (now >= startDate) return phase;
     } else {
       if (now >= startDate && now <= endDate) return phase;
@@ -116,6 +119,7 @@ function getActivePhase(phases) {
 
   return null;
 }
+
 
 
 // --- 🧠 Memory for per-user, per-thread SOP step tracking ---
