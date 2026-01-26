@@ -600,9 +600,9 @@ if (context.lastSOP && lowerText.includes("what step")) {
           relatedSOPs
         );
 
-        deprecatedNotice =
-          `> ⚠️ *Note:* "${topMatch.title}" is deprecated. ` +
-          `Using the current SOP *"${promotedSOP.title}"* instead.\n\n`;
+        // deprecatedNotice =
+        //   `> ⚠️ *Note:* "${topMatch.title}" is deprecated. ` +
+        //   `Using the current SOP *"${promotedSOP.title}"* instead.\n\n`;
 
         validSOP = promotedSOP;
         
@@ -686,7 +686,8 @@ ${sopContexts}`;
     const finalText =
       answer.trim() === NO_SOP_RESPONSE
         ? NO_SOP_RESPONSE
-        : `${deprecatedNotice}${answer}\n\n${statusNote}`;
+        : `${answer}\n\n${statusNote}`;
+
 
     await client.chat.postMessage({
       channel: event.channel,
