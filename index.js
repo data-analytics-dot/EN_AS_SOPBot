@@ -42,6 +42,7 @@ async function logSopUsageToCoda(client, payload) {
                 { column: "c-F8uEMuDPA-", value: payload.sopTitle ?? "" },
                 { column: "c-sF9gP8NODB", value: payload.stepFound ? "Yes" : "No"},
                 { column: "c-ZqQoPmZ3M0", value: payload.status },
+                { column: "c-y669WSSbMO", value: payload.gptResponse ?? "" },
                 { column: "c-PW0T6e6Kg5", value: new Date().toISOString() },
               ],
             },
@@ -543,6 +544,7 @@ if (context.lastSOP && lowerText.includes("what step")) {
     sopTitle: validSOP?.title ?? null,
     stepFound: !!validSOP, // true if SOP was used
     status: validSOP ? "Answered" : "No SOP",
+    gptResponse: null,
   });
 
 
@@ -554,10 +556,19 @@ if (context.lastSOP && lowerText.includes("what step")) {
     let deprecatedNotice = "";
 
     let topMatch = topSops[0];
+    const allCandidateSOPs = topSops;
     const isDeprecated = (topMatch.status || "").toLowerCase().includes("deprecated");
 
+    // ✅ Default to top match
+    let validSOP = topMatch;
+  
+
+
     // Filter only live SOPs for related list (exclude deprecated)
-    const relatedSOPs = topSops.filter(s => !(s.status || "").toLowerCase().includes("deprecated"));
+    const relatedSOPs = allCandidateSOPs.filter(
+      s => !(s.status || "").toLowerCase().includes("deprecated")
+    );
+
 
     if (isDeprecated) {
       if (relatedSOPs.length === 0) {
@@ -575,27 +586,28 @@ if (context.lastSOP && lowerText.includes("what step")) {
             sopTitle: topMatch.title,
             stepFound: false,
             status: "Deprecated SOP",
+            gptResponse: null,
           });
         return;
       }
 
       
 
-      const relatedList = relatedSOPs
-        .slice(0, 5)
-        .map((s, i) => `${i + 1}. <${s.link}|${s.title}> (Status: ${s.status || "N/A"}, Score: ${s.score})`)
-        .join("\n");
+       // 🧠 Let GPT choose the correct live SOP
+        const promotedSOP = await pickBestLiveSOP(
+          query,
+          topMatch,
+          relatedSOPs
+        );
 
-      await client.chat.postMessage({
-        channel: event.channel,
-        thread_ts,
-        text: `:warning: The top match SOP "${topMatch.title}" is *deprecated*. Showing related *live* SOPs instead:\n\n${relatedList}\n\nCheck out these related SOPs in the <https://coda.io/d/SOP-Database_dRB4PLkqlNM|SOP Library> — one of them may have the details you’re looking for.`,
-      });
-      return;
+        deprecatedNotice =
+          `> ⚠️ *Note:* "${topMatch.title}" is deprecated. ` +
+          `Using the current SOP *"${promotedSOP.title}"* instead.\n\n`;
+
+        validSOP = promotedSOP;
+        
     }
 
-    // ✅ If top SOP is live, just proceed normally
-    let validSOP = topMatch;
     topSops = [validSOP];
 
     // --- Add contextual note based on the SOP’s status ---
@@ -668,6 +680,9 @@ ${sopContexts}`;
 
     const NO_SOP_RESPONSE = "I couldn’t find an SOP that matches your question.";
 
+    
+    const isNoSop = answer.trim() === NO_SOP_RESPONSE;
+
     const finalText =
       answer.trim() === NO_SOP_RESPONSE
         ? NO_SOP_RESPONSE
@@ -689,7 +704,10 @@ ${sopContexts}`;
       sopTitle: finalText === NO_SOP_RESPONSE ? null : validSOP.title,
       stepFound: finalText === NO_SOP_RESPONSE ? false : true,
       status: finalText === NO_SOP_RESPONSE ? "No SOP" : "Answered",
+      gptResponse: isNoSop ? null : answer,
     });
+
+   
 
     // stop replying unrelated sops if no sop is found
     if (isNoSop) {
@@ -703,7 +721,15 @@ ${sopContexts}`;
       lastStepNumber: 1, // Optionally update later if GPT can detect specific step number
       activeSOPs: topSops,
     });
+
+      userSessions[userId] = {
+        thread_ts,
+        activeSOPs: topSops
+      };
+
+
   }
+
 
 
 
@@ -813,7 +839,7 @@ ${sopContexts}
   await client.chat.postMessage({
     channel: event.channel,
     thread_ts: threadId,
-    text: gptRes.choices[0].message.content,
+    text: answer,
   });
 
   await logSopUsageToCoda(client, {
@@ -824,10 +850,38 @@ ${sopContexts}
       sopTitle: answer === NO_SOP_RESPONSE ? null : activeSOP.title,
       stepFound: answer === NO_SOP_RESPONSE ? false : true,
       status: answer === NO_SOP_RESPONSE ? "No SOP" : "Follow-up Answer",
+      gptResponse: answer
   });
 
 });
 
+async function pickBestLiveSOP(query, deprecatedSOP, liveSOPs) {
+    const prompt = `
+  User question:
+  "${query}"
+
+  Deprecated SOP:
+  "${deprecatedSOP.title}"
+
+  Live SOP options:
+  ${liveSOPs.map((s, i) => `${i + 1}. ${s.title}`).join("\n")}
+
+  Which ONE live SOP best answers the user's question?
+
+  Rules:
+  - Respond with ONLY the number (1, 2, 3, etc)
+  - No explanation
+  `;
+
+    const res = await openai.chat.completions.create({
+      model: "gpt-4",
+      temperature: 0,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const idx = parseInt(res.choices[0].message.content.trim(), 10);
+    return liveSOPs[idx - 1] ?? liveSOPs[0];
+}
 
 
 
