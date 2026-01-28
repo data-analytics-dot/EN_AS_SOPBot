@@ -376,13 +376,13 @@ function filterRelevantSOPs(sops, query) {
 
 
   const top = filtered.length > 0 ? filtered.slice(0, 3) : sorted.slice(0, 2);
-  if (confident.length === 0) {
+  if (filtered.length === 0) {
     console.log("⚠️ No relevant SOP found");
     return [];
   }
 
   console.log(`✅ Top match: "${confident[0].title}" (score ${confident[0].score})`);
-  return confident.slice(0, 3);
+  return filtered.slice(0, 3);
 }
 
 async function getSlackUserName(client, userId) {
