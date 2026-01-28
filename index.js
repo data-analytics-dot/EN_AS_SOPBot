@@ -810,12 +810,6 @@ ${sopContexts}`;
       activeSOPs: topSops,
     });
 
-      userSessions[userId] = {
-        thread_ts,
-        activeSOPs: topSops
-      };
-
-
   }
 
 
