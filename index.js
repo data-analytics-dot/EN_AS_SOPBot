@@ -504,15 +504,13 @@ slackApp.event("app_mention", async ({ event, client }) => {
   const query = event.text.replace(/<@[^>]+>/, "").trim();
   const thread_ts = event.thread_ts || event.ts;
 
-    // ⏳ Expire stale context for this user + thread
+  // ⏳ Expire stale context for this user + thread
   const ctx = getUserContext(userId, thread_ts);
   if (Date.now() - ctx.timestamp > SESSION_TTL_MS) {
     resetUserContext(userId, thread_ts);
   }
 
-
   const session = userSessions[userId] || {};
-
   console.log(`User asked: ${query}`);
 
   // --- Retrieve or initialize user context for this thread ---
@@ -522,13 +520,11 @@ slackApp.event("app_mention", async ({ event, client }) => {
     state: "active",
   });
 
-  // --- Step Navigation Commands ---
   const lowerText = query.toLowerCase();
 
   // ⏸ Pause / end conversation
-  if (["done","resolved"].some(w => lowerText.includes(w))) {
+  if (["done", "resolved"].some((w) => lowerText.includes(w))) {
     setUserContext(userId, thread_ts, { state: "paused" });
-
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts,
@@ -540,10 +536,8 @@ slackApp.event("app_mention", async ({ event, client }) => {
   // 🔄 Resume conversation
   if (lowerText === "resume") {
     const ctx = getUserContext(userId, thread_ts);
-
     if (ctx.state === "paused") {
       setUserContext(userId, thread_ts, { state: "active" });
-
       await client.chat.postMessage({
         channel: event.channel,
         thread_ts,
@@ -553,77 +547,52 @@ slackApp.event("app_mention", async ({ event, client }) => {
     return;
   }
 
+  // 🧭 Reset context
+  if (lowerText.includes("start over") || lowerText.includes("reset")) {
+    resetUserContext(userId, thread_ts);
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      text: "Got it — starting fresh! What SOP do you want to ask about?",
+    });
+    return;
+  }
 
-// 🧭 Reset context
-if (lowerText.includes("start over") || lowerText.includes("reset")) {
-  resetUserContext(userId, thread_ts);
-  await client.chat.postMessage({
-    channel: event.channel,
-    thread_ts,
-    text: "Got it — starting fresh! What SOP do you want to ask about?",
-  });
-  return;
-}
+  // ⏭️ Next step
+  if (context.lastSOP && lowerText.includes("next step")) {
+    context.lastStepNumber = (context.lastStepNumber || 1) + 1;
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      text: `Next step for *${context.lastSOP}* is Step ${context.lastStepNumber}.`,
+    });
+    setUserContext(userId, thread_ts, context);
+    return;
+  }
 
-// ⏭️ Next step
-if (context.lastSOP && lowerText.includes("next step")) {
-  context.lastStepNumber = (context.lastStepNumber || 1) + 1;
-  await client.chat.postMessage({
-    channel: event.channel,
-    thread_ts,
-    text: `Next step for *${context.lastSOP}* is Step ${context.lastStepNumber}.`,
-  });
-  setUserContext(userId, thread_ts, context);
-  return;
-}
+  // ⏮️ Previous step
+  if (context.lastSOP && lowerText.includes("previous step")) {
+    context.lastStepNumber = Math.max(1, (context.lastStepNumber || 2) - 1);
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      text: `Previous step for *${context.lastSOP}* is Step ${context.lastStepNumber}.`,
+    });
+    setUserContext(userId, thread_ts, context);
+    return;
+  }
 
-// ⏮️ Previous step
-if (context.lastSOP && lowerText.includes("previous step")) {
-  context.lastStepNumber = Math.max(1, (context.lastStepNumber || 2) - 1);
-  await client.chat.postMessage({
-    channel: event.channel,
-    thread_ts,
-    text: `Previous step for *${context.lastSOP}* is Step ${context.lastStepNumber}.`,
-  });
-  setUserContext(userId, thread_ts, context);
-  return;
-}
+  // ❓ Ask which step this is
+  if (context.lastSOP && lowerText.includes("what step")) {
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      text: `Based on your last question, this is Step ${context.lastStepNumber || 1} from *${context.lastSOP}*.`,
+    });
+    return;
+  }
 
-// ❓ Ask which step this is
-if (context.lastSOP && lowerText.includes("what step")) {
-  await client.chat.postMessage({
-    channel: event.channel,
-    thread_ts,
-    text: `Based on your last question, this is Step ${context.lastStepNumber || 1} from *${context.lastSOP}*.`,
-  });
-  return;
-}
-
-
-  // --- Handle pending confirmation ---
-  // const session = userSessions[userId];
-  // if (session?.awaitingConfirmation && session.thread_ts === thread_ts) {
-  //   const text = (event.text || "").trim().toLowerCase();
-  //   if (["yes", "yep", "yeah"].includes(text)) {
-  //     await client.chat.postMessage({
-  //       channel: event.channel,
-  //       thread_ts,
-  //       text: "Glad I could help! You can view or search this SOP and others directly here: <https://coda.io/d/SOP-Database_dRB4PLkqlNM|SOP Library>. 🔍",
-  //     });
-  //     clearSession(userId);
-  //     return;
-  //   } else if (["no", "nope", "nah"].includes(text)) {
-  //     await client.chat.postMessage({
-  //       channel: event.channel,
-  //       thread_ts,
-  //       text: "Alright, go ahead and ask your next question. 🙂",
-  //     });
-  //     clearSession(userId);
-  //     return;
-  //   }
-  // }
-
-   // --- Fetch or reuse SOPs ---
+  // --- Fetch or reuse SOPs ---
   let topSops;
   let isFollowUp = false;
 
@@ -643,123 +612,73 @@ if (context.lastSOP && lowerText.includes("what step")) {
       text: "I couldn’t find an SOP that matches your question.",
     });
 
-  
-    const validSOP = null;
-     // --- LOG TO CODA ---
     await logSopUsageToCoda(client, {
-    userId: event.user,
-    channel: event.channel,
-    threadTs: thread_ts,
-    question: query,
-    sopTitle: validSOP?.title ?? null,
-    stepFound: !!validSOP, // true if SOP was used
-    status: validSOP ? "Answered" : "No SOP",
-    gptResponse: null,
-  });
-
+      userId: event.user,
+      channel: event.channel,
+      threadTs: thread_ts,
+      question: query,
+      sopTitle: null,
+      stepFound: false,
+      status: "No SOP",
+      gptResponse: null,
+    });
 
     return;
-  } else {
-   
-    // --- Handle deprecated and in-progress statuses before building prompt ---
-    let statusNote = "";
-    let deprecatedNotice = "";
+  }
 
-    let topMatch = topSops[0];
-    const allCandidateSOPs = topSops;
-    const isDeprecated = (topMatch.status || "").toLowerCase().includes("deprecated");
+  // --- Keep only top 3 SOPs ---
+  topSops = topSops.slice(0, 3);
 
-    // ✅ Default to top match
-    let validSOP = topMatch;
-  
+  // --- Filter deprecated SOPs ---
+  const liveSOPs = topSops.filter(
+    (s) => !(s.status || "").toLowerCase().includes("deprecated")
+  );
 
+  if (liveSOPs.length === 0) {
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      text: `:warning: All top SOP matches are deprecated. Please check the SOP library for newer versions.`,
+    });
 
-    // Filter only live SOPs for related list (exclude deprecated)
-    const relatedSOPs = allCandidateSOPs.filter(
-      s => !(s.status || "").toLowerCase().includes("deprecated")
-    );
+    await logSopUsageToCoda(client, {
+      userId,
+      channel: event.channel,
+      threadTs: thread_ts,
+      question: query,
+      sopTitle: null,
+      stepFound: false,
+      status: "Deprecated SOP",
+      gptResponse: null,
+    });
 
+    return;
+  }
 
-    if (isDeprecated) {
-      if (relatedSOPs.length === 0) {
-        await client.chat.postMessage({
-          channel: event.channel,
-          thread_ts,
-          text: `:warning: The top match SOP "${topMatch.title}" is deprecated, and no live related SOPs were found. Please check the SOP library for newer versions.`,
-        });
-          
-          await logSopUsageToCoda(client, {
-            userId: userId,
-            channel: event.channel,
-            threadTs: thread_ts,
-            question: query,
-            sopTitle: topMatch.title,
-            stepFound: false,
-            status: "Deprecated SOP",
-            gptResponse: null,
-          });
-        return;
-      }
+  topSops = liveSOPs.slice(0, 3);
 
-      
-
-       // 🧠 Let GPT choose the correct live SOP
-        const promotedSOP = await pickBestLiveSOP(
-          query,
-          topMatch,
-          relatedSOPs
-        );
-
-        // deprecatedNotice =
-        //   `> ⚠️ *Note:* "${topMatch.title}" is deprecated. ` +
-        //   `Using the current SOP *"${promotedSOP.title}"* instead.\n\n`;
-
-        validSOP = promotedSOP;
-        
-    }
-
-    topSops = [validSOP];
-
-    // --- Add contextual note based on the SOP’s status ---
-    if (validSOP.status) {
-      const status = validSOP.status.toLowerCase();
-      const authorName = validSOP.author || null;
-      const authorNote = authorName ? ` Reach out to *${authorName}* for any questions.` : "";
-
-      if (status.includes("update in-progress")) {
-        statusNote = `> 📝 *Note:* This SOP’s *update is in progress* — contents may still change.${authorNote}`;
-      } else if (status.includes("in-progress")) {
-        statusNote = `> :warning: *Note:* This SOP is *still being written* and may not yet be finalized.${authorNote}`;
-      } else if (status.includes("pending review")) {
-        statusNote = `> 📝 *Note:* This SOP is *pending review* — details might be revised soon.${authorNote}`;
-      }
-    }
-
-
-
-    // --- Build context for GPT only from the valid SOP ---
-    const sopContexts = topSops
-      .map((s) => {
-        const steps = parseSteps(s.sop)
-          .map((step) => `${step.step}\n${step.content}`)
-          .join("\n\n");
-        return `Title: ${s.title}\nLink: <${s.link}|${s.title}>\n${steps}`;
-      })
-      .join("\n\n---\n\n");
-
+  // --- Build context for GPT from top 3 SOPs ---
+  const sopContexts = topSops
+    .map((s) => {
+      const steps = parseSteps(s.sop)
+        .map((step) => `${step.step}\n${step.content}`)
+        .join("\n\n");
+      return `Title: ${s.title}\nLink: <${s.link}|${s.title}>\n${steps}`;
+    })
+    .join("\n\n---\n\n");
 
   // --- If follow-up, prepend context about previous SOP ---
-    let followUpNote = "";
-    if (isFollowUp && topSops.length > 0) {
-      followUpNote = `\nThe user is asking a follow-up question about the same SOP titled "${topSops[0].title}". Use only this SOP to answer. They may be asking for details, all steps, or clarification.\n\n`;
-    }
+  let followUpNote = "";
+  if (isFollowUp && topSops.length > 0) {
+    followUpNote = `\nThe user is asking a follow-up question about the same SOP titled "${topSops[0].title}". Use only this SOP to answer.\n\n`;
+  }
 
-
-    const prompt = `You are a helpful support assistant for SOPs. Use the SOPs below as your knowledge base.
+  // --- GPT Prompt ---
+  const prompt = `You are a helpful support assistant for SOPs. Use the SOPs below as your knowledge base.
 
 ${followUpNote}
 Rules:
-1. First, identify the ONE SOP that best matches the user's question (use the title + content).
+1. First, you MUST choose ONE SOP that best answers the user question.
 2. Then, find the SINGLE most relevant step (or sub-steps) inside that SOP, make sure it is relevant to the question asked and include the step number in the message.
 3. Answer ONLY from that step. Do NOT include unrelated steps, summaries, or introductions.
 4. Paraphrase concisely in instructional style, second person ("you"), with clear action verbs.
@@ -773,84 +692,59 @@ Rules:
 6. End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
 7. If no SOP or step matches, respond: "I couldn’t find an SOP that matches your question."
 
-
-
 User question: ${query}
 
 Here are all the SOPs:
 ${sopContexts}`;
 
-    const gptRes = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.2,
-    });
+  const gptRes = await openai.chat.completions.create({
+    model: "gpt-4",
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.2,
+  });
 
-    const answer = gptRes.choices[0].message?.content ?? "No answer.";
+  const answer = gptRes.choices[0].message?.content ?? "No answer.";
 
-    const NO_SOP_RESPONSE = "I couldn’t find an SOP that matches your question.";
+  const NO_SOP_RESPONSE = "I couldn’t find an SOP that matches your question.";
+  const isNoSop = answer.trim() === NO_SOP_RESPONSE;
 
-    
-    const isNoSop = answer.trim() === NO_SOP_RESPONSE;
+  // --- Extract chosen SOP from GPT response ---
+  const chosenSOP = answer.match(/<[^|>]+\|([^>]+)>/)?.[1]?.trim() ?? null;
 
-    const finalText =
-      answer.trim() === NO_SOP_RESPONSE
-        ? NO_SOP_RESPONSE
-        : `${answer}\n\n${statusNote}`;
+  const finalText =
+    answer.trim() === NO_SOP_RESPONSE
+      ? NO_SOP_RESPONSE
+      : `${answer}\n\n${statusNote}`;
 
+  await client.chat.postMessage({
+    channel: event.channel,
+    thread_ts,
+    text: finalText,
+  });
 
-    await client.chat.postMessage({
-      channel: event.channel,
-      thread_ts,
-      text: finalText,
-    });
+  await logSopUsageToCoda(client, {
+    userId: userId,
+    channel: event.channel,
+    threadTs: thread_ts,
+    question: query,
+    sopTitle: chosenSOP,
+    stepFound: !isNoSop,
+    status: isNoSop ? "No SOP" : "Answered",
+    gptResponse: isNoSop ? null : answer,
+  });
 
-    
-
-    await logSopUsageToCoda(client, {
-      userId: userId,
-      channel: event.channel,
-      threadTs: thread_ts,
-      question: query,
-      sopTitle: finalText === NO_SOP_RESPONSE ? null : validSOP.title,
-      stepFound: finalText === NO_SOP_RESPONSE ? false : true,
-      status: finalText === NO_SOP_RESPONSE ? "No SOP" : "Answered",
-      gptResponse: isNoSop ? null : answer,
-    });
-
-   
-
-    // stop replying unrelated sops if no sop is found
-    if (isNoSop) {
-      resetUserContext(userId, thread_ts);
-      return;
-    }
-
-
-    setUserContext(userId, thread_ts, {
-      lastSOP: validSOP.title,
-      lastStepNumber: 1, // Optionally update later if GPT can detect specific step number
-      activeSOPs: topSops,
-    });
-
+  if (isNoSop) {
+    resetUserContext(userId, thread_ts);
+    return;
   }
 
-
-
-
-  // Ask for confirmation and store session
-  // await client.chat.postMessage({
-  //   channel: event.channel,
-  //   thread_ts,
-  //   text: "Is that everything?",
-  // });
-
-  // setSession(userId, {
-  //   awaitingConfirmation: true,
-  //   thread_ts,
-  //   activeSOPs: topSops, // ✅ Save SOPs for follow-ups in same thread
-  // });
+  setUserContext(userId, thread_ts, {
+    lastSOP: chosenSOP,
+    lastStepNumber: 1,
+    activeSOPs: topSops,
+  });
 });
+
 
 
 slackApp.event("message", async ({ event, client }) => {
