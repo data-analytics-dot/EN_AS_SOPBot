@@ -339,18 +339,33 @@ function filterRelevantSOPs(sops, query) {
     .map(normalizeWord)
     .filter(Boolean);
 
+       
+    const hasTitleHit = queryWords.some(w =>
+      titleWords.some(tw => tw === w || tw.includes(w))
+    );
+
+    const hasExactTagHit = uniqueTags.some(tag =>
+      queryWords.includes(tag)
+    );
+
+    if (!hasTitleHit && !hasExactTagHit) {
+      return { ...s, score: 0 };
+    }
+
     let matchCount = 0;
     for (const w of queryWords) {
       if (titleWords.some((tw) => tw.includes(w))) matchCount++;
     }
 
-    score += matchCount * 10;
+    score += matchCount * 25;
+
 
     let contentMatchCount = 0;
     for (const w of queryWords) {
       if (content.includes(w)) contentMatchCount++;
     }
-    score += contentMatchCount * 2;
+    score += Math.min(contentMatchCount, 2) * 2;
+
 
 
     let tagMatch = 0;
@@ -358,20 +373,22 @@ function filterRelevantSOPs(sops, query) {
       for (const tag of uniqueTags) {
         if (tag === w) {
           tagMatch += 3;       // exact match = strong
-        } else if (tag.includes(w)) {
-          tagMatch += 1;       // partial match = soft
+        } else if (tag.startsWith(w) || w.startsWith(tag)) {
+          tagMatch += 0.5;
         }
       }
     }
     score += tagMatch * 10;
+
+
+
 
     return { ...s, score };
   });
 
   const sorted = scored.sort((a, b) => b.score - a.score);
   const filtered = sorted.filter((s) => s.score > 0);
-  const CONFIDENCE_THRESHOLD = 15;
-  const confident = sorted.filter(s => s.score >= CONFIDENCE_THRESHOLD);
+  
 
 
 
@@ -381,8 +398,14 @@ function filterRelevantSOPs(sops, query) {
     return [];
   }
 
-  console.log(`✅ Top match: "${confident[0].title}" (score ${confident[0].score})`);
+  if (filtered.length === 0) {
+    console.log("⚠️ No relevant SOP found");
+    return [];
+  }
+
+  console.log(`✅ Top match: "${filtered[0].title}" (score ${filtered[0].score})`);
   return filtered.slice(0, 3);
+
 }
 
 async function getSlackUserName(client, userId) {
