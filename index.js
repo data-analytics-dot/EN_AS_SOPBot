@@ -285,8 +285,23 @@ function parseSteps(sopText) {
   return steps;
 }
 
+function normalizeWord(w) {
+  if (w.endsWith("ing")) return w.slice(0, -3);
+  if (w.endsWith("ed")) return w.slice(0, -2);
+  if (w.endsWith("es")) return w.slice(0, -2);
+  if (w.endsWith("s")) return w.slice(0, -1);
+  return w;
+}
+
+
 // --- Helper: filter relevant SOPs ---
 function filterRelevantSOPs(sops, query) {
+  const STOPWORDS = new Set([
+    "how","to","the","a","an","for","of","on","in","is","are",
+    "do","does","did","i","we","you","what","when","where","why"
+  ]);
+
+
   const q = query.toLowerCase().replace(/[^\w\s]/g, "").trim();
   console.log(`\n🔍 Filtering SOPs for query: "${query}"`);
 
@@ -314,8 +329,15 @@ function filterRelevantSOPs(sops, query) {
 
 
 
-    const queryWords = q.split(/\s+/).filter(Boolean);
-    const titleWords = title.split(/\s+/).filter(Boolean);
+    const queryWords = q
+    .split(/\s+/)
+    .map(normalizeWord)
+    .filter(w => w && !STOPWORDS.has(w));
+
+    const titleWords = title
+    .split(/\s+/)
+    .map(normalizeWord)
+    .filter(Boolean);
 
     let matchCount = 0;
     for (const w of queryWords) {
@@ -348,15 +370,19 @@ function filterRelevantSOPs(sops, query) {
 
   const sorted = scored.sort((a, b) => b.score - a.score);
   const filtered = sorted.filter((s) => s.score > 0);
+  const CONFIDENCE_THRESHOLD = 15;
+  const confident = sorted.filter(s => s.score >= CONFIDENCE_THRESHOLD);
+
+
 
   const top = filtered.length > 0 ? filtered.slice(0, 3) : sorted.slice(0, 2);
-  if (top.length > 0) {
-    console.log(`✅ Top match: "${top[0].title}" (score ${top[0].score})`);
-  } else {
+  if (confident.length === 0) {
     console.log("⚠️ No relevant SOP found");
+    return [];
   }
 
-  return top;
+  console.log(`✅ Top match: "${confident[0].title}" (score ${confident[0].score})`);
+  return confident.slice(0, 3);
 }
 
 async function getSlackUserName(client, userId) {
