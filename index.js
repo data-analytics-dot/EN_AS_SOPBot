@@ -658,6 +658,7 @@ slackApp.event("app_mention", async ({ event, client }) => {
   topSops = liveSOPs.slice(0, 3);
 
   // --- Build context for GPT from top 3 SOPs ---
+  let statusNote = "";
   const sopContexts = topSops
     .map((s) => {
       const steps = parseSteps(s.sop)
