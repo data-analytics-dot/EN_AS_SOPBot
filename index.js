@@ -138,15 +138,16 @@ function getUserContext(userId, thread_ts) {
   return userSessions[userId][thread_ts];
 }
 
-function setUserContext(userId, thread_ts, data) {
-  if (!userSessions[userId]) userSessions[userId] = {};
-  userSessions[userId][thread_ts] = {
-    ...userSessions[userId][thread_ts],
-    ...data,
-    timestamp: Date.now(),
+function setUserContext(userId, threadId, newContext) {
+  userSessions[userId] = userSessions[userId] || {};
+  const existing = userSessions[userId][threadId] || {};
+  userSessions[userId][threadId] = {
+    ...existing,
+    ...newContext,
+    timestamp: Date.now()
   };
-  scheduleSaveSessions();
 }
+
 
 function resetUserContext(userId, thread_ts) {
   if (userSessions[userId]) {
@@ -707,8 +708,7 @@ slackApp.event("message", async ({ event, client }) => {
   // --- Resume ---
   if (lowerText === "resume") {
     if (ctx.state === "paused") {
-    // restore last context AND keep SOP
-    setUserContext(userId, threadId, { ...ctx, state: "active" });
+    setUserContext(userId, threadId, { state: "active" });
 
     await client.chat.postMessage({
       channel: event.channel,
@@ -716,7 +716,7 @@ slackApp.event("message", async ({ event, client }) => {
       text: `🔄 Resumed. We were on *${ctx.lastSOP ?? "your SOP"}*.`,
     });
     } else {
-      await client.chat.postMessage({
+        await client.chat.postMessage({
         channel: event.channel,
         thread_ts: threadId,
         text: "Your session is already active. You can continue asking questions.",
