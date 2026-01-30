@@ -138,16 +138,15 @@ function getUserContext(userId, thread_ts) {
   return userSessions[userId][thread_ts];
 }
 
-function setUserContext(userId, threadId, newContext) {
-  userSessions[userId] = userSessions[userId] || {};
-  const existing = userSessions[userId][threadId] || {};
-  userSessions[userId][threadId] = {
-    ...existing,
-    ...newContext,
-    timestamp: Date.now()
+function setUserContext(userId, thread_ts, data) {
+  if (!userSessions[userId]) userSessions[userId] = {};
+  userSessions[userId][thread_ts] = {
+    ...userSessions[userId][thread_ts],
+    ...data,
+    timestamp: Date.now(),
   };
+  scheduleSaveSessions();
 }
-
 
 function resetUserContext(userId, thread_ts) {
   if (userSessions[userId]) {
@@ -523,7 +522,75 @@ slackApp.event("app_mention", async ({ event, client }) => {
 
   const lowerText = query.toLowerCase();
 
-  
+  // ⏸ Pause / end conversation
+  if (["done", "resolved"].some((w) => lowerText.includes(w))) {
+    setUserContext(userId, thread_ts, { state: "paused" });
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      text: "✅ Got it — I’ll step back. Say *resume* or mention me if you need more help.",
+    });
+    return;
+  }
+
+  // 🔄 Resume conversation
+  if (lowerText === "resume") {
+    const ctx = getUserContext(userId, thread_ts);
+    if (ctx.state === "paused") {
+      setUserContext(userId, thread_ts, { state: "active" });
+      await client.chat.postMessage({
+        channel: event.channel,
+        thread_ts,
+        text: `🔄 Resumed. We were on *${ctx.lastSOP ?? "your SOP"}*.`,
+      });
+    }
+    return;
+  }
+
+  // 🧭 Reset context
+  if (lowerText.includes("start over") || lowerText.includes("reset")) {
+    resetUserContext(userId, thread_ts);
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      text: "Got it — starting fresh! What SOP do you want to ask about?",
+    });
+    return;
+  }
+
+  // ⏭️ Next step
+  if (context.lastSOP && lowerText.includes("next step")) {
+    context.lastStepNumber = (context.lastStepNumber || 1) + 1;
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      text: `Next step for *${context.lastSOP}* is Step ${context.lastStepNumber}.`,
+    });
+    setUserContext(userId, thread_ts, context);
+    return;
+  }
+
+  // ⏮️ Previous step
+  if (context.lastSOP && lowerText.includes("previous step")) {
+    context.lastStepNumber = Math.max(1, (context.lastStepNumber || 2) - 1);
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      text: `Previous step for *${context.lastSOP}* is Step ${context.lastStepNumber}.`,
+    });
+    setUserContext(userId, thread_ts, context);
+    return;
+  }
+
+  // ❓ Ask which step this is
+  if (context.lastSOP && lowerText.includes("what step")) {
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      text: `Based on your last question, this is Step ${context.lastStepNumber || 1} from *${context.lastSOP}*.`,
+    });
+    return;
+  }
 
   // --- Fetch or reuse SOPs ---
   let topSops;
@@ -679,18 +746,11 @@ ${sopContexts}`;
   });
 });
 
+
+
 slackApp.event("message", async ({ event, client }) => {
   if (event.subtype === "bot_message") return;
   if (!event.thread_ts) return;
-
-
-  // 🚫 Mentions are handled by app_mention (even inside threads)
-   if (event.mentions?.includes(process.env.BOT_USER_ID)) {
-    console.log("🛑 Message ignored — mention handled by app_mention");
-    return;
-  }
-
-
 
   const userId = event.user;
   const threadId = event.thread_ts;
@@ -708,15 +768,14 @@ slackApp.event("message", async ({ event, client }) => {
   // --- Resume ---
   if (lowerText === "resume") {
     if (ctx.state === "paused") {
-    setUserContext(userId, threadId, { state: "active" });
-
-    await client.chat.postMessage({
-      channel: event.channel,
-      thread_ts: threadId,
-      text: `🔄 Resumed. We were on *${ctx.lastSOP ?? "your SOP"}*.`,
-    });
+      setUserContext(userId, threadId, { state: "active" });
+      await client.chat.postMessage({
+        channel: event.channel,
+        thread_ts: threadId,
+        text: `🔄 Resumed. We were on *${ctx.lastSOP ?? "your SOP"}*.`,
+      });
     } else {
-        await client.chat.postMessage({
+      await client.chat.postMessage({
         channel: event.channel,
         thread_ts: threadId,
         text: "Your session is already active. You can continue asking questions.",
