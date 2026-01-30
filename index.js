@@ -707,12 +707,14 @@ slackApp.event("message", async ({ event, client }) => {
   // --- Resume ---
   if (lowerText === "resume") {
     if (ctx.state === "paused") {
-      setUserContext(userId, threadId, { state: "active" });
-      await client.chat.postMessage({
-        channel: event.channel,
-        thread_ts: threadId,
-        text: `🔄 Resumed. We were on *${ctx.lastSOP ?? "your SOP"}*.`,
-      });
+    // restore last context AND keep SOP
+    setUserContext(userId, threadId, { ...ctx, state: "active" });
+
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts: threadId,
+      text: `🔄 Resumed. We were on *${ctx.lastSOP ?? "your SOP"}*.`,
+    });
     } else {
       await client.chat.postMessage({
         channel: event.channel,
