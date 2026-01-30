@@ -684,7 +684,11 @@ slackApp.event("message", async ({ event, client }) => {
 
 
   // 🚫 Mentions are handled by app_mention (even inside threads)
-  if (event.text?.includes(`<@${process.env.BOT_USER_ID}>`)) return;
+   if (event.mentions?.includes(process.env.BOT_USER_ID)) {
+    console.log("🛑 Message ignored — mention handled by app_mention");
+    return;
+  }
+
 
 
   const userId = event.user;
