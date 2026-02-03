@@ -75,20 +75,17 @@ async function logSopUsageToCoda(client, payload) {
 
     // Try multiple ways to extract rowId
     let rowId = null;
-    if (data.rows && Array.isArray(data.rows) && data.rows[0]?.id) {
-      rowId = data.rows[0].id; // Standard structure
+
+    if (data.addedRowIds?.length) {
+      rowId = data.addedRowIds[0];
+    } else if (data.rows?.[0]?.id) {
+      rowId = data.rows[0].id;
     } else if (data.id) {
-      rowId = data.id; // Fallback: If it's a single row response
-    } else if (data.rows && data.rows.length > 0) {
-      // Fallback: Check for other possible keys
-      rowId = data.rows[0].rowId || data.rows[0].row_id || data.rows[0].name || null;
+      rowId = data.id;
     }
 
-    if (!rowId) {
-      console.warn("⚠️ No rowId found in Coda response. Possible structure issue.");
-    } else {
-      console.log("✅ Extracted rowId:", rowId);
-    }
+    console.log("🧪 Final rowId used for feedback:", rowId);
+
 
     return rowId;
   } catch (err) {
@@ -878,6 +875,7 @@ ${sopContexts}
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts: threadId,
+      text: "Was this helpful?",
       blocks: [
         {
           type: "section",
