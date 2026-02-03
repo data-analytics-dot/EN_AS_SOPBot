@@ -23,16 +23,12 @@ const PHASE_END_COLUMN_ID = process.env.PHASE_END_COLUMN_ID;
 
 async function logSopUsageToCoda(client, payload) {
   try {
-
     const userName = payload.userName || await getSlackUserName(client, payload.userId);
 
     // 🚀 Fetch phase info
     const phases = await fetchPhases();
     const activePhase = getActivePhase(phases);
-
-    const phaseName = activePhase
-      ? activePhase.values[PHASE_NAME_COLUMN_ID]
-      : null;
+    const phaseName = activePhase ? activePhase.values[PHASE_NAME_COLUMN_ID] : null;
 
     const res = await fetch(
       `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows`,
@@ -52,7 +48,7 @@ async function logSopUsageToCoda(client, payload) {
                 { column: "c-vJpPj2lNsj", value: String(payload.threadTs) },
                 { column: "c-dgNIZbOVZQ", value: payload.question },
                 { column: "c-F8uEMuDPA-", value: payload.sopTitle ?? "" },
-                { column: "c-sF9gP8NODB", value: payload.stepFound ? "Yes" : "No"},
+                { column: "c-sF9gP8NODB", value: payload.stepFound ? "Yes" : "No" },
                 { column: "c-ZqQoPmZ3M0", value: payload.status },
                 { column: "c-y669WSSbMO", value: payload.gptResponse ?? "" },
                 { column: "c-awpUarmk0l", value: phaseName },
@@ -66,11 +62,18 @@ async function logSopUsageToCoda(client, payload) {
 
     if (!res.ok) {
       console.error("❌ Coda log failed:", res.status, await res.text());
+      return null; // Return null if logging fails
     }
+
+    const data = await res.json();
+    const rowId = data.rows?.[0]?.id; // Extract the row ID from the response
+    return rowId || null;
   } catch (err) {
     console.error("❌ Failed to log SOP usage to Coda", err);
+    return null;
   }
 }
+
 
 async function fetchPhases() {
   const res = await fetch(
@@ -723,7 +726,7 @@ ${sopContexts}`;
     text: finalText,
   });
 
-  await logSopUsageToCoda(client, {
+   const rowId = await logSopUsageToCoda(client, {
     userId: userId,
     channel: event.channel,
     threadTs: thread_ts,
@@ -734,6 +737,7 @@ ${sopContexts}`;
     gptResponse: isNoSop ? null : answer,
   });
 
+
   if (isNoSop) {
     resetUserContext(userId, thread_ts);
     return;
@@ -743,7 +747,47 @@ ${sopContexts}`;
     lastSOP: chosenSOP,
     lastStepNumber: 1,
     activeSOPs: topSops,
+    lastRowId: rowId, // Store for button updates
   });
+
+  if (rowId) {
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: "Was this helpful?",
+          },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: {
+                type: "plain_text",
+                text: "Yes",
+              },
+              action_id: "helpful_yes",
+              value: JSON.stringify({ rowId }),
+            },
+            {
+              type: "button",
+              text: {
+                type: "plain_text",
+                text: "No",
+              },
+              action_id: "helpful_no",
+              value: JSON.stringify({ rowId }),
+            },
+          ],
+        },
+      ],
+    });
+  }
 });
 
 slackApp.event("message", async ({ event, client }) => {
@@ -779,18 +823,6 @@ slackApp.event("message", async ({ event, client }) => {
         text: "Your session is already active. You can continue asking questions.",
       });
     }
-    return;
-  }
-
-  // --- Pause / end commands ---
-  const pauseCommands = ["done", "resolved"];
-  if (pauseCommands.some(cmd => lowerText.includes(cmd))) {
-    setUserContext(userId, threadId, { state: "paused" });
-    await client.chat.postMessage({
-      channel: event.channel,
-      thread_ts: threadId,
-      text: "✅ Got it — I’ll step back. Say *resume* if you need more help.",
-    });
     return;
   }
 
@@ -881,40 +913,37 @@ async function pickBestLiveSOP(query, deprecatedSOP, liveSOPs) {
     return liveSOPs[idx - 1] ?? liveSOPs[0];
 }
 
-
-
-// --- Handle yes/no replies in thread ---
-// slackApp.event("message", async ({ event, client }) => {
-//   // Ignore bot messages or messages not in a thread
-//   if (event.subtype === "bot_message" || !event.thread_ts) return;
-
-//   const userId = event.user;
-//   const session = userSessions[userId];
-//   const text = (event.text || "").trim().toLowerCase();
-
-//   // Only respond if the user has an active confirmation session in this thread
-//   if (!session?.awaitingConfirmation || session.thread_ts !== event.thread_ts) return;
-
-//   if (["yes", "yep", "yeah"].includes(text)) {
-//     await client.chat.postMessage({
-//       channel: event.channel,
-//       thread_ts: event.thread_ts,
-//       text: "Glad I could help! You can view or search this SOP and others directly here: <https://coda.io/d/SOP-Database_dRB4PLkqlNM|SOP Library>. 🔍",
-//     });
-//     clearSession(userId);
-//   } else if (["no", "nope", "nah"].includes(text)) {
-//     await client.chat.postMessage({
-//       channel: event.channel,
-//       thread_ts: event.thread_ts,
-//       text: "Alright, go ahead and ask your next question. 🙂",
-//     });
-//     clearSession(userId);
-//   }
-// });
-
 // --- Start Slack App ---
 (async () => {
   await loadSessions();
   await slackApp.start();
   console.log("⚡ SOP Bot is running!");
 })();
+
+async function updateCodaHelpful(rowId, value) {
+  try {
+    const res = await fetch(
+      `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows/${rowId}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${CODA_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          row: {
+            cells: [
+              { column: "c-W1btQ6Urg3", value: value }, // Update the helpful column
+            ],
+          },
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      console.error("❌ Coda update failed:", res.status, await res.text());
+    }
+  } catch (err) {
+    console.error("❌ Failed to update Coda helpful feedback", err);
+  }
+}
