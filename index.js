@@ -526,10 +526,12 @@ slackApp.event("app_mention", async ({ event, client }) => {
   const thread_ts = event.thread_ts || event.ts;
 
   // ⏳ Expire stale context for this user + thread
-  const ctx = getUserContext(userId, thread_ts);
-  if (Date.now() - ctx.timestamp > SESSION_TTL_MS) {
+  let ctx = getUserContext(userId, thread_ts);
+  if (!ctx || Date.now() - ctx.timestamp > SESSION_TTL_MS) {
     resetUserContext(userId, thread_ts);
+    ctx = getUserContext(userId, thread_ts); // refresh after reset
   }
+
 
   const session = userSessions[userId] || {};
   console.log(`User asked: ${query}`);
@@ -786,7 +788,11 @@ slackApp.event("message", async ({ event, client }) => {
   // --- Pause / end commands ---
   const pauseCommands = ["done", "resolved"];
   if (pauseCommands.some(cmd => lowerText.includes(cmd))) {
-    setUserContext(userId, threadId, { state: "paused" });
+    setUserContext(userId, threadId, {
+      ...ctx,      // preserve everything
+      state: "paused", // only change the flag
+    });
+
 
     await client.chat.postMessage({
       channel: event.channel,
@@ -838,7 +844,10 @@ slackApp.event("message", async ({ event, client }) => {
   // --- Resume ---
   if (lowerText === "resume") {
     if (ctx.state === "paused") {
-      setUserContext(userId, threadId, { state: "active" });
+       setUserContext(userId, threadId, { 
+        ...ctx,        // preserve lastRowId, lastSOP, etc.
+        state: "active" 
+      });
       await client.chat.postMessage({
         channel: event.channel,
         thread_ts: threadId,
