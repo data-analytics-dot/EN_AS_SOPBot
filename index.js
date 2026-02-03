@@ -124,7 +124,7 @@ function getActivePhase(phases) {
 }
 
 
-
+const userContexts = {};
 // --- 🧠 Memory for per-user, per-thread SOP step tracking ---
 function getUserContext(userId, thread_ts) {
   if (!userSessions[userId]) userSessions[userId] = {};
