@@ -538,8 +538,10 @@ slackApp.event("app_mention", async ({ event, client }) => {
   const context = getUserContext(userId, thread_ts);
 
   setUserContext(userId, thread_ts, {
+    ...ctx,
     state: "active",
   });
+
 
   const lowerText = query.toLowerCase();
 
@@ -548,7 +550,11 @@ slackApp.event("app_mention", async ({ event, client }) => {
   if (lowerText === "resume") {
     const ctx = getUserContext(userId, thread_ts);
     if (ctx.state === "paused") {
-      setUserContext(userId, thread_ts, { state: "active" });
+      setUserContext(userId, thread_ts, {
+        ...ctx,
+        state: "active",
+      });
+
       await client.chat.postMessage({
         channel: event.channel,
         thread_ts,
@@ -751,10 +757,12 @@ ${sopContexts}`;
   }
 
   setUserContext(userId, thread_ts, {
+    ...ctx,
     lastSOP: chosenSOP,
     lastStepNumber: 1,
     activeSOPs: topSops,
   });
+
 });
 
 slackApp.event("message", async ({ event, client }) => {
