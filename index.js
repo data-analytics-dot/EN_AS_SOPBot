@@ -20,6 +20,7 @@ const PHASE_NAME_COLUMN_ID = process.env.PHASE_NAME_COLUMN_ID;
 const PHASE_START_COLUMN_ID = process.env.PHASE_START_COLUMN_ID;
 const PHASE_END_COLUMN_ID = process.env.PHASE_END_COLUMN_ID;
 
+const userContexts = {};
 
 async function logSopUsageToCoda(client, payload) {
   try {
@@ -124,7 +125,7 @@ function getActivePhase(phases) {
 }
 
 
-const userContexts = {};
+
 // --- 🧠 Memory for per-user, per-thread SOP step tracking ---
 function getUserContext(userId, thread_ts) {
   if (!userSessions[userId]) userSessions[userId] = {};
