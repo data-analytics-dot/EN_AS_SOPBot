@@ -141,15 +141,17 @@ function getUserContext(userId, thread_ts) {
   return userSessions[userId][thread_ts];
 }
 
-function setUserContext(userId, thread_ts, data) {
-  if (!userSessions[userId]) userSessions[userId] = {};
-  userSessions[userId][thread_ts] = {
-    ...userSessions[userId][thread_ts],
-    ...data,
+function setUserContext(userId, threadTs, updates) {
+  const key = `${userId}:${threadTs}`;
+  const prev = userContexts[key] || {};
+
+  userContexts[key] = {
+    ...prev,
+    ...updates,
     timestamp: Date.now(),
   };
-  scheduleSaveSessions();
 }
+
 
 function resetUserContext(userId, thread_ts) {
   if (userSessions[userId]) {
@@ -509,9 +511,12 @@ slackApp.event("app_mention", async ({ event, client }) => {
 
   // ⏳ Expire stale context for this user + thread
   const ctx = getUserContext(userId, thread_ts);
-  if (Date.now() - ctx.timestamp > SESSION_TTL_MS) {
+ if (ctx?.rowId && Date.now() - ctx.timestamp > SESSION_TTL_MS) {
+    // allow feedback window
+  } else if (Date.now() - ctx.timestamp > SESSION_TTL_MS) {
     resetUserContext(userId, thread_ts);
   }
+
 
   const session = userSessions[userId] || {};
   console.log(`User asked: ${query}`);
@@ -775,38 +780,44 @@ slackApp.event("message", async ({ event, client }) => {
     }
 
     await client.chat.postMessage({
-      channel: event.channel,
-      thread_ts: threadId,
-      blocks: [
-        {
-          type: "actions",
-          elements: [
+          channel: event.channel,
+          thread_ts: threadId,
+          blocks: [
             {
-              type: "button",
-              text: { type: "plain_text", text: "👍 Yes" },
-              style: "primary",
-              value: JSON.stringify({
-                threadTs: threadId,
-                rowId: updatedCtx.rowId,
-                helpful: "Yes"
-              }),
-              action_id: "helpful_yes"
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: "✅ Got it — I’ll step back.\n\n*Was this helpful?*"
+              }
             },
             {
-              type: "button",
-              text: { type: "plain_text", text: "👎 No" },
-              style: "danger",
-              value: JSON.stringify({
-                threadTs: threadId,
-                rowId: updatedCtx.rowId,
-                helpful: "No"
-              }),
-              action_id: "helpful_no"
+              type: "actions",
+              elements: [
+                {
+                  type: "button",
+                  text: { type: "plain_text", text: "👍 Yes" },
+                  style: "primary",
+                  value: JSON.stringify({
+                    rowId: updatedCtx.rowId,
+                    helpful: "Yes"
+                  }),
+                  action_id: "helpful_yes"
+                },
+                {
+                  type: "button",
+                  text: { type: "plain_text", text: "👎 No" },
+                  style: "danger",
+                  value: JSON.stringify({
+                    rowId: updatedCtx.rowId,
+                    helpful: "No"
+                  }),
+                  action_id: "helpful_no"
+                }
+              ]
             }
           ]
-        }
-      ]
-    });
+        });
+
 
     return;
   }
