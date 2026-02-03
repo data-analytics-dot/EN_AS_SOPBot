@@ -428,80 +428,6 @@ async function getSlackUserName(client, userId) {
 }
 
 
-// function filterRelevantSOPs(sops, query) {
-//   const q = query.toLowerCase().replace(/[^\w\s]/g, "").trim();
-//   const queryWords = q.split(/\s+/).filter(Boolean);
-
-//   console.log(`\n🔍 Filtering SOPs for query: "${query}"`);
-
-//   const scored = sops.map((s) => {
-//     const title = (s.title || "").toLowerCase();
-//     const content = (s.sop || "").toLowerCase();
-//     const tagsRaw = s.tags || "";
-//     const tags = Array.isArray(tagsRaw)
-//       ? tagsRaw.map(t => t.toLowerCase().trim())
-//       : tagsRaw.toLowerCase().split(/[,;|]/).map(t => t.trim()).filter(Boolean);
-
-//     let score = 0;
-
-//     //
-//     // 🔹 1. Title match score
-//     //
-//     let titleMatch = 0;
-//     const titleWords = title.split(/\s+/).filter(Boolean);
-//     for (const w of queryWords) {
-//       if (titleWords.some(tw => tw.includes(w))) titleMatch++;
-//     }
-//     score += titleMatch * 10;
-
-//     //
-//     // 🔹 2. Content match score
-//     //
-//     let contentMatch = 0;
-//     for (const w of queryWords) {
-//       if (content.includes(w)) contentMatch++;
-//     }
-//     score += contentMatch * 2;
-
-//     //
-//     // 🔹 3. NEW: Tag match score
-//     //
-//     let tagMatch = 0;
-//     for (const w of queryWords) {
-//       for (const tag of tags) {
-//         if (tag === w) {
-//           tagMatch += 3;       // exact match = strong
-//         } else if (tag.includes(w)) {
-//           tagMatch += 1;       // partial match = soft
-//         }
-//       }
-//     }
-//     score += tagMatch * 10;    // Tag matches carry heavier weight
-
-//     //
-//     // We attach the final score
-//     //
-//     return { ...s, score };
-//   });
-
-//   //
-//   // Sorting & selecting top
-//   //
-//   const sorted = scored.sort((a, b) => b.score - a.score);
-//   const filtered = sorted.filter(s => s.score > 0);
-
-//   const top = filtered.length > 0 ? filtered.slice(0, 3) : sorted.slice(0, 2);
-
-//   if (top.length > 0) {
-//     console.log(`✅ Top match: "${top[0].title}" (score ${top[0].score})`);
-//   } else {
-//     console.log("⚠️ No relevant SOP found");
-//   }
-
-//   return top;
-// }
-
-
 // --- Handle app mention ---
 
 slackApp.event("app_mention", async ({ event, client }) => {
@@ -734,6 +660,11 @@ ${sopContexts}`;
 slackApp.event("message", async ({ event, client }) => {
   if (event.subtype === "bot_message") return;
   if (!event.thread_ts) return;
+
+   // 🚫 CRITICAL: ignore app mentions here
+  if (event.text?.includes(`<@${process.env.SLACK_BOT_USER_ID}>`)) {
+    return;
+  }
 
   const userId = event.user;
   const threadId = event.thread_ts;
@@ -993,9 +924,19 @@ slackApp.action(/helpful_.*/, async ({ ack, body, client }) => {
   await logHelpfulToCoda({ rowId, helpful });
 
   // Optional UX: acknowledge vote without removing history
-  await client.chat.postMessage({
+  await client.chat.update({
     channel: body.channel.id,
-    thread_ts: body.message.thread_ts,
-    text: `🙏 Thanks! You marked this as *${helpful}*.`
+    ts: body.message.ts,
+    text: `🙏 Thanks! You marked this as *${helpful}*.`,
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `🙏 Thanks! You marked this as *${helpful}*.`
+        }
+      }
+    ]
   });
+
 });
