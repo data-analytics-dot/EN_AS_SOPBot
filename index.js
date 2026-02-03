@@ -64,14 +64,33 @@ async function logSopUsageToCoda(client, payload) {
       }
     );
 
-     if (!res.ok) {
-      console.error("❌ Coda log failed:", res.status, await res.text());
-      return null; // Return null if logging fails
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("❌ Coda log failed:", res.status, errorText);
+      return null;
     }
 
     const data = await res.json();
-    const rowId = data.rows?.[0]?.id; // Extract the row ID from the response
-    return rowId || null;
+    console.log("📊 Full Coda response for logging:", JSON.stringify(data, null, 2)); // Debug: Log the entire response
+
+    // Try multiple ways to extract rowId
+    let rowId = null;
+    if (data.rows && Array.isArray(data.rows) && data.rows[0]?.id) {
+      rowId = data.rows[0].id; // Standard structure
+    } else if (data.id) {
+      rowId = data.id; // Fallback: If it's a single row response
+    } else if (data.rows && data.rows.length > 0) {
+      // Fallback: Check for other possible keys
+      rowId = data.rows[0].rowId || data.rows[0].row_id || data.rows[0].name || null;
+    }
+
+    if (!rowId) {
+      console.warn("⚠️ No rowId found in Coda response. Possible structure issue.");
+    } else {
+      console.log("✅ Extracted rowId:", rowId);
+    }
+
+    return rowId;
   } catch (err) {
     console.error("❌ Failed to log SOP usage to Coda", err);
   }
