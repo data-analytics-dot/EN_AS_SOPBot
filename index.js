@@ -65,29 +65,8 @@ async function logSopUsageToCoda(client, payload) {
     );
 
     if (!res.ok) {
-      const errorText = await res.text();
-      console.error("❌ Coda log failed:", res.status, errorText);
-      return null;
+      console.error("❌ Coda log failed:", res.status, await res.text());
     }
-
-    const data = await res.json();
-    console.log("📊 Full Coda response for logging:", JSON.stringify(data, null, 2)); // Debug: Log the entire response
-
-    // Try multiple ways to extract rowId
-    let rowId = null;
-
-    if (data.addedRowIds?.length) {
-      rowId = data.addedRowIds[0];
-    } else if (data.rows?.[0]?.id) {
-      rowId = data.rows[0].id;
-    } else if (data.id) {
-      rowId = data.id;
-    }
-
-    console.log("🧪 Final rowId used for feedback:", rowId);
-
-
-    return rowId;
   } catch (err) {
     console.error("❌ Failed to log SOP usage to Coda", err);
   }
@@ -526,12 +505,10 @@ slackApp.event("app_mention", async ({ event, client }) => {
   const thread_ts = event.thread_ts || event.ts;
 
   // ⏳ Expire stale context for this user + thread
-  let ctx = getUserContext(userId, thread_ts);
-  if (!ctx || Date.now() - ctx.timestamp > SESSION_TTL_MS) {
+  const ctx = getUserContext(userId, thread_ts);
+  if (Date.now() - ctx.timestamp > SESSION_TTL_MS) {
     resetUserContext(userId, thread_ts);
-    ctx = getUserContext(userId, thread_ts); // refresh after reset
   }
-
 
   const session = userSessions[userId] || {};
   console.log(`User asked: ${query}`);
@@ -540,23 +517,27 @@ slackApp.event("app_mention", async ({ event, client }) => {
   const context = getUserContext(userId, thread_ts);
 
   setUserContext(userId, thread_ts, {
-    ...ctx,
     state: "active",
   });
 
-
   const lowerText = query.toLowerCase();
 
+  // ⏸ Pause / end conversation
+  if (["done", "resolved"].some((w) => lowerText.includes(w))) {
+    setUserContext(userId, thread_ts, { state: "paused" });
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      text: "✅ Got it — I’ll step back. Say *resume* or mention me if you need more help.",
+    });
+    return;
+  }
 
   // 🔄 Resume conversation
   if (lowerText === "resume") {
     const ctx = getUserContext(userId, thread_ts);
     if (ctx.state === "paused") {
-      setUserContext(userId, thread_ts, {
-        ...ctx,
-        state: "active",
-      });
-
+      setUserContext(userId, thread_ts, { state: "active" });
       await client.chat.postMessage({
         channel: event.channel,
         thread_ts,
@@ -759,12 +740,10 @@ ${sopContexts}`;
   }
 
   setUserContext(userId, thread_ts, {
-    ...ctx,
     lastSOP: chosenSOP,
     lastStepNumber: 1,
     activeSOPs: topSops,
   });
-
 });
 
 slackApp.event("message", async ({ event, client }) => {
@@ -784,70 +763,10 @@ slackApp.event("message", async ({ event, client }) => {
 
   const lowerText = (event.text || "").toLowerCase();
 
-
-  // --- Pause / end commands ---
-  const pauseCommands = ["done", "resolved"];
-  if (pauseCommands.some(cmd => lowerText.includes(cmd))) {
-    setUserContext(userId, threadId, {
-      ...ctx,      // preserve everything
-      state: "paused", // only change the flag
-    });
-
-
-    await client.chat.postMessage({
-      channel: event.channel,
-      thread_ts: threadId,
-      text: "✅ Got it — I’ll step back.",
-    });
-
-    // ✅ Post feedback UI here
-    if (ctx.lastRowId) {
-      await client.chat.postMessage({
-        channel: event.channel,
-        thread_ts: threadId,
-        text: "Was this helpful?",
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: "*Was this helpful?*",
-            },
-          },
-          {
-            type: "actions",
-            elements: [
-              {
-                type: "button",
-                text: { type: "plain_text", text: "Yes" },
-                action_id: "helpful_yes",
-                value: JSON.stringify({ rowId: ctx.lastRowId }),
-              },
-              {
-                type: "button",
-                text: { type: "plain_text", text: "No" },
-                action_id: "helpful_no",
-                value: JSON.stringify({ rowId: ctx.lastRowId }),
-              },
-            ],
-          },
-        ],
-      });
-    } else {
-      console.warn("⚠️ No lastRowId found — skipping feedback prompt");
-    }
-
-    return;
-  }
-
-
   // --- Resume ---
   if (lowerText === "resume") {
     if (ctx.state === "paused") {
-       setUserContext(userId, threadId, { 
-        ...ctx,        // preserve lastRowId, lastSOP, etc.
-        state: "active" 
-      });
+      setUserContext(userId, threadId, { state: "active" });
       await client.chat.postMessage({
         channel: event.channel,
         thread_ts: threadId,
@@ -860,6 +779,18 @@ slackApp.event("message", async ({ event, client }) => {
         text: "Your session is already active. You can continue asking questions.",
       });
     }
+    return;
+  }
+
+  // --- Pause / end commands ---
+  const pauseCommands = ["done", "resolved"];
+  if (pauseCommands.some(cmd => lowerText.includes(cmd))) {
+    setUserContext(userId, threadId, { state: "paused" });
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts: threadId,
+      text: "✅ Got it — I’ll step back. Say *resume* if you need more help.",
+    });
     return;
   }
 
@@ -909,23 +840,16 @@ ${sopContexts}
     text: answer,
   });
 
-  const rowId = await logSopUsageToCoda(client, {
-    userId: userId,
-    channel: event.channel,
-    threadTs: threadId,
-    question: query,
-    sopTitle: answer === NO_SOP_RESPONSE ? null : activeSOP.title,
-    stepFound: answer === NO_SOP_RESPONSE ? false : true,
-    status: answer === NO_SOP_RESPONSE ? "No SOP" : "Follow-up Answer",
-    gptResponse: answer
+  await logSopUsageToCoda(client, {
+      userId: userId,
+      channel: event.channel,
+      threadTs: threadId,
+      question: query,
+      sopTitle: answer === NO_SOP_RESPONSE ? null : activeSOP.title,
+      stepFound: answer === NO_SOP_RESPONSE ? false : true,
+      status: answer === NO_SOP_RESPONSE ? "No SOP" : "Follow-up Answer",
+      gptResponse: answer
   });
-
-  if (answer !== NO_SOP_RESPONSE) {
-    setUserContext(userId, threadId, {
-      ...ctx, // Preserve existing context
-      lastRowId: rowId, // Store for button updates
-    });
-  }
 
 });
 
@@ -994,53 +918,3 @@ async function pickBestLiveSOP(query, deprecatedSOP, liveSOPs) {
   await slackApp.start();
   console.log("⚡ SOP Bot is running!");
 })();
-
-async function updateCodaHelpful(rowId, value) {
-  try {
-    const res = await fetch(
-      `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows/${rowId}`,
-      {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${CODA_API_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          row: {
-            cells: [
-              { column: "c-W1btQ6Urg3", value: value }, // Update the helpful column
-            ],
-          },
-        }),
-      }
-    );
-
-    if (!res.ok) {
-      console.error("❌ Coda update failed:", res.status, await res.text());
-    }
-  } catch (err) {
-    console.error("❌ Failed to update Coda helpful feedback", err);
-  }
-}
-
-slackApp.action("helpful_yes", async ({ ack, body, client }) => {
-  await ack(); // Acknowledge the action
-  const { rowId } = JSON.parse(body.actions[0].value); // Parse the rowId from the button value
-  await updateCodaHelpful(rowId, "yes"); // Update Coda with "yes"
-  await client.chat.postMessage({
-    channel: body.container.channel_id,
-    thread_ts: body.container.thread_ts,
-    text: "Thanks for the feedback! 👍",
-  });
-});
-
-slackApp.action("helpful_no", async ({ ack, body, client }) => {
-  await ack(); // Acknowledge the action
-  const { rowId } = JSON.parse(body.actions[0].value); // Parse the rowId from the button value
-  await updateCodaHelpful(rowId, "no"); // Update Coda with "no"
-  await client.chat.postMessage({
-    channel: body.container.channel_id,
-    thread_ts: body.container.thread_ts,
-    text: "Thanks for the feedback! We'll work on improving. 😊",
-  });
-});
