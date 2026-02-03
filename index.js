@@ -525,31 +525,6 @@ slackApp.event("app_mention", async ({ event, client }) => {
 
   const lowerText = query.toLowerCase();
 
-  // ⏸ Pause / end conversation
-  if (["done", "resolved"].some((w) => lowerText.includes(w))) {
-    setUserContext(userId, thread_ts, { state: "paused" });
-    await client.chat.postMessage({
-      channel: event.channel,
-      thread_ts,
-      text: "✅ Got it — I’ll step back. Say *resume* or mention me if you need more help.",
-    });
-    return;
-  }
-
-  // 🔄 Resume conversation
-  if (lowerText === "resume") {
-    const ctx = getUserContext(userId, thread_ts);
-    if (ctx.state === "paused") {
-      setUserContext(userId, thread_ts, { state: "active" });
-      await client.chat.postMessage({
-        channel: event.channel,
-        thread_ts,
-        text: `🔄 Resumed. We were on *${ctx.lastSOP ?? "your SOP"}*.`,
-      });
-    }
-    return;
-  }
-
   // 🧭 Reset context
   if (lowerText.includes("start over") || lowerText.includes("reset")) {
     resetUserContext(userId, thread_ts);
@@ -990,28 +965,26 @@ async function logHelpfulToCoda({ rowId, helpful }) {
   console.log("⚡ SOP Bot is running!");
 })();
 
-slackApp.action(/helpful_.*/, async ({ body, ack, client }) => {
+slackApp.action(/helpful_.*/, async ({ ack, body, client }) => {
   await ack();
 
-  const payload = JSON.parse(body.actions[0].value);
-  const { threadTs, helpful } = payload;
+  const action = body.actions[0];
+  const payload = JSON.parse(action.value);
+  const { rowId, helpful } = payload;
 
-  // Update the message
-  await client.chat.update({
+  if (!rowId) {
+    console.error("❌ Missing rowId in helpful action", payload);
+    return;
+  }
+
+  console.log("🟢 Helpful click received:", { rowId, helpful });
+
+  await logHelpfulToCoda({ rowId, helpful });
+
+  // Optional UX: acknowledge vote without removing history
+  await client.chat.postMessage({
     channel: body.channel.id,
-    ts: body.message.ts,
-    text: `Thanks for the feedback! You selected *${helpful}*`,
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `Thanks for the feedback! You selected *${helpful}*`
-        }
-      }
-    ]
+    thread_ts: body.message.thread_ts,
+    text: `🙏 Thanks! You marked this as *${helpful}*.`
   });
-
-  // Update Coda
-  await logHelpfulToCoda({ threadTs, helpful });
 });
