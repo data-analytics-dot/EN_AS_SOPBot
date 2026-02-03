@@ -644,6 +644,7 @@ ${sopContexts}`;
     gptResponse: isNoSop ? null : answer,
   });
 
+  console.log("ROWID:", rowId);
 
   if (isNoSop) {
     resetUserContext(userId, thread_ts);
