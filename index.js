@@ -947,3 +947,25 @@ async function updateCodaHelpful(rowId, value) {
     console.error("❌ Failed to update Coda helpful feedback", err);
   }
 }
+
+slackApp.action("helpful_yes", async ({ ack, body, client }) => {
+  await ack(); // Acknowledge the action
+  const { rowId } = JSON.parse(body.actions[0].value); // Parse the rowId from the button value
+  await updateCodaHelpful(rowId, "yes"); // Update Coda with "yes"
+  await client.chat.postMessage({
+    channel: body.container.channel_id,
+    thread_ts: body.container.thread_ts,
+    text: "Thanks for the feedback! 👍",
+  });
+});
+
+slackApp.action("helpful_no", async ({ ack, body, client }) => {
+  await ack(); // Acknowledge the action
+  const { rowId } = JSON.parse(body.actions[0].value); // Parse the rowId from the button value
+  await updateCodaHelpful(rowId, "no"); // Update Coda with "no"
+  await client.chat.postMessage({
+    channel: body.container.channel_id,
+    thread_ts: body.container.thread_ts,
+    text: "Thanks for the feedback! We'll work on improving. 😊",
+  });
+});
