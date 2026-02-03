@@ -802,16 +802,24 @@ ${sopContexts}
     text: answer,
   });
 
-  await logSopUsageToCoda(client, {
-      userId: userId,
-      channel: event.channel,
-      threadTs: threadId,
-      question: query,
-      sopTitle: answer === NO_SOP_RESPONSE ? null : activeSOP.title,
-      stepFound: answer === NO_SOP_RESPONSE ? false : true,
-      status: answer === NO_SOP_RESPONSE ? "No SOP" : "Follow-up Answer",
-      gptResponse: answer
+  const rowId = await logSopUsageToCoda(client, {
+    userId: userId,
+    channel: event.channel,
+    threadTs: threadId,
+    question: query,
+    sopTitle: answer === NO_SOP_RESPONSE ? null : activeSOP.title,
+    stepFound: answer === NO_SOP_RESPONSE ? false : true,
+    status: answer === NO_SOP_RESPONSE ? "No SOP" : "Follow-up Answer",
+    gptResponse: answer
   });
+
+  const updatedCtx = getUserContext(userId, threadId) || {};
+
+  setUserContext(userId, threadId, {
+    ...updatedCtx,
+    rowId,
+  });
+
 
 });
 
