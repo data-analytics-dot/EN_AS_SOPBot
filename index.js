@@ -726,7 +726,7 @@ ${sopContexts}`;
     text: finalText,
   });
 
-  await logSopUsageToCoda(client, {
+  const rowId = await logSopUsageToCoda(client, {
     userId: userId,
     channel: event.channel,
     threadTs: thread_ts,
@@ -736,6 +736,7 @@ ${sopContexts}`;
     status: isNoSop ? "No SOP" : "Answered",
     gptResponse: isNoSop ? null : answer,
   });
+
 
   if (isNoSop) {
     resetUserContext(userId, thread_ts);
@@ -787,22 +788,21 @@ slackApp.event("message", async ({ event, client }) => {
   }
 
   // --- Pause / end commands ---
-  const pauseCommands = ["done", "resolved"];
-  if (pauseCommands.some(cmd => lowerText.includes(cmd))) {
+    const pauseCommands = ["done", "resolved"];
+    if (pauseCommands.some(cmd => lowerText.includes(cmd))) {
     setUserContext(userId, threadId, { state: "paused" });
+
+    // 🔄 re-read context AFTER update
+    const updatedCtx = getUserContext(userId, threadId);
+
+    if (!updatedCtx?.rowId) {
+      console.warn("⚠️ No rowId found for helpfulness logging", updatedCtx);
+    }
 
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts: threadId,
-      text: "✅ Got it — I’ll step back. Say *resume* if you need more help.",
       blocks: [
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: "✅ Got it — I’ll step back. Say *resume* if you need more help.\n\n*Was this helpful?*"
-          }
-        },
         {
           type: "actions",
           elements: [
@@ -810,14 +810,22 @@ slackApp.event("message", async ({ event, client }) => {
               type: "button",
               text: { type: "plain_text", text: "👍 Yes" },
               style: "primary",
-              value: JSON.stringify({ threadTs: threadId, helpful: "Yes" }),
+              value: JSON.stringify({
+                threadTs: threadId,
+                rowId: updatedCtx.rowId,
+                helpful: "Yes"
+              }),
               action_id: "helpful_yes"
             },
             {
               type: "button",
               text: { type: "plain_text", text: "👎 No" },
               style: "danger",
-              value: JSON.stringify({ threadTs: threadId, helpful: "No" }),
+              value: JSON.stringify({
+                threadTs: threadId,
+                rowId: updatedCtx.rowId,
+                helpful: "No"
+              }),
               action_id: "helpful_no"
             }
           ]
@@ -827,6 +835,7 @@ slackApp.event("message", async ({ event, client }) => {
 
     return;
   }
+
 
 
 
