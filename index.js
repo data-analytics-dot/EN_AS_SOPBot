@@ -70,7 +70,14 @@ async function logSopUsageToCoda(client, payload) {
         }
 
         const data = await res.json();
-        return data.rows?.[0]?.id ?? null;
+
+       return (
+          data.rows?.[0]?.id ??
+          data.items?.[0]?.id ??
+          data.id ??
+          null
+        );
+
   } catch (err) {
     console.error("❌ Failed to log SOP usage to Coda", err);
   }
@@ -684,7 +691,13 @@ slackApp.event("message", async ({ event, client }) => {
   // --- Resume ---
   if (lowerText === "resume") {
     if (ctx.state === "paused") {
-      setUserContext(userId, threadId, { state: "active" });
+      const prev = getUserContext(userId, thread_ts) || {};
+
+        setUserContext(userId, thread_ts, {
+          ...prev,
+          state: "active"
+        });
+
       await client.chat.postMessage({
         channel: event.channel,
         thread_ts: threadId,
