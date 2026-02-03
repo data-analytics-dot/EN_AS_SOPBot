@@ -63,10 +63,13 @@ async function logSopUsageToCoda(client, payload) {
         }),
       }
     );
-
     if (!res.ok) {
-      console.error("❌ Coda log failed:", res.status, await res.text());
-    }
+          console.error("❌ Coda log failed:", res.status, await res.text());
+          return null;
+        }
+
+        const data = await res.json();
+        return data.rows?.[0]?.id ?? null;
   } catch (err) {
     console.error("❌ Failed to log SOP usage to Coda", err);
   }
@@ -743,6 +746,7 @@ ${sopContexts}`;
     lastSOP: chosenSOP,
     lastStepNumber: 1,
     activeSOPs: topSops,
+    rowId, 
   });
 });
 
@@ -912,55 +916,32 @@ async function pickBestLiveSOP(query, deprecatedSOP, liveSOPs) {
     return liveSOPs[idx - 1] ?? liveSOPs[0];
 }
 
-async function logHelpfulToCoda({ threadTs, helpful }) {
+async function logHelpfulToCoda({ rowId, helpful }) {
+  if (!rowId) return;
+
   try {
-    const query = encodeURIComponent(`c-vJpPj2lNsj="${threadTs}"`);
-    let nextPageToken = null;
-
-    do {
-      const url = `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows?query=${query}` +
-        (nextPageToken ? `&pageToken=${nextPageToken}` : "");
-
-      const res = await fetch(url, {
-        method: "GET",
+    const updateRes = await fetch(
+      `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows/${rowId}`,
+      {
+        method: "PUT",
         headers: {
           Authorization: `Bearer ${CODA_API_TOKEN}`,
+          "Content-Type": "application/json",
         },
-      });
-
-      const data = await res.json();
-
-      const matchingRows = data.items || [];
-
-      // If you expect only one match, stop after first
-      for (const row of matchingRows) {
-        await fetch(
-          `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows/${row.id}`,
-          {
-            method: "PUT",
-            headers: {
-              Authorization: `Bearer ${CODA_API_TOKEN}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              cells: [
-                { column: "c-W1btQ6Urg3", value: helpful },
-              ],
-            }),
-          }
-        );
-
-        // If you only want 1 update, uncomment this:
-        // return;
+        body: JSON.stringify({
+          cells: [{ column: "c-W1btQ6Urg3", value: helpful }],
+        }),
       }
+    );
 
-      nextPageToken = data.nextPageToken;
-    } while (nextPageToken);
-
+    if (!updateRes.ok) {
+      console.error("❌ Coda update failed:", updateRes.status, await updateRes.text());
+    }
   } catch (err) {
     console.error("❌ Failed to log helpfulness", err);
   }
 }
+
 
 
 
