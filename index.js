@@ -802,7 +802,7 @@ ${sopContexts}
     text: answer,
   });
 
-  const rowId = await logSopUsageToCoda(client, {
+  await logSopUsageToCoda(client, {
     userId: userId,
     channel: event.channel,
     threadTs: threadId,
@@ -813,13 +813,7 @@ ${sopContexts}
     gptResponse: answer
   });
 
-  const updatedCtx = getUserContext(userId, threadId) || {};
-
-  setUserContext(userId, threadId, {
-    ...updatedCtx,
-    rowId,
-  });
-
+  
 
 });
 
@@ -876,38 +870,6 @@ async function logHelpfulToCoda({ rowId, helpful }) {
     console.error("❌ Failed to log helpfulness", err);
   }
 }
-
-
-
-
-// --- Handle yes/no replies in thread ---
-// slackApp.event("message", async ({ event, client }) => {
-//   // Ignore bot messages or messages not in a thread
-//   if (event.subtype === "bot_message" || !event.thread_ts) return;
-
-//   const userId = event.user;
-//   const session = userSessions[userId];
-//   const text = (event.text || "").trim().toLowerCase();
-
-//   // Only respond if the user has an active confirmation session in this thread
-//   if (!session?.awaitingConfirmation || session.thread_ts !== event.thread_ts) return;
-
-//   if (["yes", "yep", "yeah"].includes(text)) {
-//     await client.chat.postMessage({
-//       channel: event.channel,
-//       thread_ts: event.thread_ts,
-//       text: "Glad I could help! You can view or search this SOP and others directly here: <https://coda.io/d/SOP-Database_dRB4PLkqlNM|SOP Library>. 🔍",
-//     });
-//     clearSession(userId);
-//   } else if (["no", "nope", "nah"].includes(text)) {
-//     await client.chat.postMessage({
-//       channel: event.channel,
-//       thread_ts: event.thread_ts,
-//       text: "Alright, go ahead and ask your next question. 🙂",
-//     });
-//     clearSession(userId);
-//   }
-// });
 
 // --- Start Slack App ---
 (async () => {
