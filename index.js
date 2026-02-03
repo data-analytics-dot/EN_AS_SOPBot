@@ -779,13 +779,53 @@ slackApp.event("message", async ({ event, client }) => {
   const pauseCommands = ["done", "resolved"];
   if (pauseCommands.some(cmd => lowerText.includes(cmd))) {
     setUserContext(userId, threadId, { state: "paused" });
+
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts: threadId,
-      text: "✅ Got it — I’ll step back. Say *resume* if you need more help.",
+      text: "✅ Got it — I’ll step back.",
     });
+
+    // ✅ Post feedback UI here
+    if (ctx.lastRowId) {
+      await client.chat.postMessage({
+        channel: event.channel,
+        thread_ts: threadId,
+        text: "Was this helpful?",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: "*Was this helpful?*",
+            },
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: { type: "plain_text", text: "Yes" },
+                action_id: "helpful_yes",
+                value: JSON.stringify({ rowId: ctx.lastRowId }),
+              },
+              {
+                type: "button",
+                text: { type: "plain_text", text: "No" },
+                action_id: "helpful_no",
+                value: JSON.stringify({ rowId: ctx.lastRowId }),
+              },
+            ],
+          },
+        ],
+      });
+    } else {
+      console.warn("⚠️ No lastRowId found — skipping feedback prompt");
+    }
+
     return;
   }
+
 
   // --- Resume ---
   if (lowerText === "resume") {
@@ -867,47 +907,6 @@ ${sopContexts}
     setUserContext(userId, threadId, {
       ...ctx, // Preserve existing context
       lastRowId: rowId, // Store for button updates
-    });
-  }
-
-  // Send "Was this helpful?" message with buttons (added for consistency)
-  if (rowId && answer !== NO_SOP_RESPONSE) {
-    await client.chat.postMessage({
-      channel: event.channel,
-      thread_ts: threadId,
-      text: "Was this helpful?",
-      blocks: [
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: "Was this helpful?",
-          },
-        },
-        {
-          type: "actions",
-          elements: [
-            {
-              type: "button",
-              text: {
-                type: "plain_text",
-                text: "Yes",
-              },
-              action_id: "helpful_yes",
-              value: JSON.stringify({ rowId }),
-            },
-            {
-              type: "button",
-              text: {
-                type: "plain_text",
-                text: "No",
-              },
-              action_id: "helpful_no",
-              value: JSON.stringify({ rowId }),
-            },
-          ],
-        },
-      ],
     });
   }
 
