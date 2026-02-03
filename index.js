@@ -746,8 +746,6 @@ ${sopContexts}`;
   });
 });
 
-
-
 slackApp.event("message", async ({ event, client }) => {
   if (event.subtype === "bot_message") return;
   if (!event.thread_ts) return;
@@ -788,13 +786,44 @@ slackApp.event("message", async ({ event, client }) => {
   const pauseCommands = ["done", "resolved"];
   if (pauseCommands.some(cmd => lowerText.includes(cmd))) {
     setUserContext(userId, threadId, { state: "paused" });
+
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts: threadId,
       text: "✅ Got it — I’ll step back. Say *resume* if you need more help.",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: "✅ Got it — I’ll step back. Say *resume* if you need more help.\n\n*Was this helpful?*"
+          }
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "👍 Yes" },
+              style: "primary",
+              value: JSON.stringify({ threadTs: threadId, helpful: "Yes" }),
+              action_id: "helpful_yes"
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "👎 No" },
+              style: "danger",
+              value: JSON.stringify({ threadTs: threadId, helpful: "No" }),
+              action_id: "helpful_no"
+            }
+          ]
+        }
+      ]
     });
+
     return;
   }
+
 
 
     // 🚫 Ignore unless explicitly active
@@ -883,6 +912,56 @@ async function pickBestLiveSOP(query, deprecatedSOP, liveSOPs) {
     return liveSOPs[idx - 1] ?? liveSOPs[0];
 }
 
+async function logHelpfulToCoda({ threadTs, helpful }) {
+  try {
+    const query = encodeURIComponent(`c-vJpPj2lNsj="${threadTs}"`);
+    let nextPageToken = null;
+
+    do {
+      const url = `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows?query=${query}` +
+        (nextPageToken ? `&pageToken=${nextPageToken}` : "");
+
+      const res = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${CODA_API_TOKEN}`,
+        },
+      });
+
+      const data = await res.json();
+
+      const matchingRows = data.items || [];
+
+      // If you expect only one match, stop after first
+      for (const row of matchingRows) {
+        await fetch(
+          `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows/${row.id}`,
+          {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${CODA_API_TOKEN}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              cells: [
+                { column: "c-W1btQ6Urg3", value: helpful },
+              ],
+            }),
+          }
+        );
+
+        // If you only want 1 update, uncomment this:
+        // return;
+      }
+
+      nextPageToken = data.nextPageToken;
+    } while (nextPageToken);
+
+  } catch (err) {
+    console.error("❌ Failed to log helpfulness", err);
+  }
+}
+
 
 
 // --- Handle yes/no replies in thread ---
@@ -920,3 +999,29 @@ async function pickBestLiveSOP(query, deprecatedSOP, liveSOPs) {
   await slackApp.start();
   console.log("⚡ SOP Bot is running!");
 })();
+
+slackApp.action(/helpful_.*/, async ({ body, ack, client }) => {
+  await ack();
+
+  const payload = JSON.parse(body.actions[0].value);
+  const { threadTs, helpful } = payload;
+
+  // Update the message
+  await client.chat.update({
+    channel: body.channel.id,
+    ts: body.message.ts,
+    text: `Thanks for the feedback! You selected *${helpful}*`,
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `Thanks for the feedback! You selected *${helpful}*`
+        }
+      }
+    ]
+  });
+
+  // Update Coda
+  await logHelpfulToCoda({ threadTs, helpful });
+});
