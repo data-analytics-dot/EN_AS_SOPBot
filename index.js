@@ -743,13 +743,13 @@ slackApp.event("message", async ({ event, client }) => {
               type: "button",
               text: { type: "plain_text", text: "No" },
               style: "danger",
-              // 🔥 CHANGE: Send channel and ts instead of rowId
+              //CHANGE: Send channel and ts instead of rowId
               value: JSON.stringify({ channel: event.channel, ts: event.ts }),
               action_id: "helpful_no"
             },
             {
               type: "button",
-              text: { type: "plain_text", text: "🙋‍♂️ Ask KM for help" },
+              text: { type: "plain_text", text: ":raising_hand: Ask KM for help" },
               value: JSON.stringify({ channel: event.channel, ts: event.ts }),
               action_id: "helpful_ask_km" // New ID
             }
@@ -858,7 +858,7 @@ async function pickBestLiveSOP(query, deprecatedSOP, liveSOPs) {
 })();
 
 // This regex matches both "helpful_yes" and "helpful_no"
-slackApp.action(/helpful_(yes|no)/, async ({ ack, body, client, action }) => {
+slackApp.action(/helpful_(yes|no|ask_km)/, async ({ ack, body, client, action }) => {
   await ack();
 
   try {
