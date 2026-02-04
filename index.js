@@ -716,28 +716,6 @@ slackApp.event("message", async ({ event, client }) => {
   const pauseCommands = ["done", "resolved"];
   if (pauseCommands.some(cmd => lowerText.includes(cmd))) {
     setUserContext(userId, threadId, { state: "paused" });
-
-    // Log the last SOP usage first
-    const lastSOP = ctx.activeSOPs?.[0];
-    let rowId = null;
-
-    if (lastSOP) {
-      rowId = await logSopUsageToCoda(client, {
-        userId,
-        channel: event.channel,
-        threadTs: threadId,
-        question: lastSOP.lastQuery || "",
-        sopTitle: lastSOP.title,
-        stepFound: true,
-        status: "Follow-up Answer",
-        gptResponse: lastSOP.lastAnswer || "",
-        userName: null
-      });
-
-      // save rowId in context for buttons
-      setUserContext(userId, threadId, { lastRowId: rowId });
-    }
-
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts: threadId,
@@ -745,42 +723,46 @@ slackApp.event("message", async ({ event, client }) => {
     });
 
     await client.chat.postMessage({
-      channel: event.channel,
-      thread_ts: threadId,
-      text: "Was this helpful?",
-      blocks: [
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: "Was this helpful?"
-          }
-        },
-        {
-          type: "actions",
-          elements: [
-            {
-              type: "button",
-              text: { type: "plain_text", text: "Yes" },
-              style: "primary",
-              value: JSON.stringify({ rowId }),
-              action_id: "helpful_yes"
-            },
-            {
-              type: "button",
-              text: { type: "plain_text", text: "No" },
-              style: "danger",
-              value: JSON.stringify({ rowId }),
-              action_id: "helpful_no"
-            }
-          ]
+    channel: event.channel,
+    thread_ts: threadId,
+    text: "Was this helpful?",
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "Was this helpful?"
         }
-      ]
-    });
-
+      },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Yes"
+            },
+            style: "primary",
+            value: JSON.stringify({ rowId: ctx.lastRowId }),
+            action_id: "helpful_yes"
+          },
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "No"
+            },
+            style: "danger",
+           value: JSON.stringify({ rowId: ctx.lastRowId }),
+            action_id: "helpful_no"
+          }
+        ]
+      }
+    ]
+  });
     return;
   }
-
 
 
     // 🚫 Ignore unless explicitly active
