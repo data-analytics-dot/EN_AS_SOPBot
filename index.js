@@ -686,17 +686,16 @@ slackApp.event("message", async ({ event, client }) => {
   // --- Resume ---
   if (lowerText === "resume") {
     if (ctx.state === "paused") {
-      setUserContext(userId, threadId, { state: "active" });
+      // 🔥 FIX: Spread the existing 'ctx' so we keep the SOP details!
+      setUserContext(userId, threadId, { 
+        ...ctx, 
+        state: "active" 
+      });
+      
       await client.chat.postMessage({
         channel: event.channel,
         thread_ts: threadId,
         text: `🔄 Resumed. We were on *${ctx.lastSOP ?? "your SOP"}*.`,
-      });
-    } else {
-      await client.chat.postMessage({
-        channel: event.channel,
-        thread_ts: threadId,
-        text: "Your session is already active. You can continue asking questions.",
       });
     }
     return;
@@ -705,7 +704,11 @@ slackApp.event("message", async ({ event, client }) => {
     // --- Pause / end commands ---
   const pauseCommands = ["done", "resolved"];
   if (pauseCommands.some(cmd => lowerText.includes(cmd))) {
-    setUserContext(userId, threadId, { state: "paused" });
+    // 🔥 FIX: Spread the existing context (ctx) so we don't lose the SOP info!
+    setUserContext(userId, threadId, { 
+      ...ctx, 
+      state: "paused" 
+    });
 
     await client.chat.postMessage({
       channel: event.channel,
