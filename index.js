@@ -883,36 +883,26 @@ slackApp.action("helpful_no", async ({ ack, body, client }) => {
 
 
 async function updateCodaFeedback(rowId, feedbackValue) {
-  try {
-    const url = `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows`;
+  const url = `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows`;
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${CODA_API_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        rows: [
-          {
-            cells: [
-              { column: "id", value: rowId }, 
-              { column: "c-W1btQ6Urg3", value: feedbackValue }
-            ]
-          }
-        ],
-        keyColumns: ["id"] 
-      }) 
-    }); 
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error("❌ Coda update failed:", res.status, errorText);
-    }
-
-  } catch (err) {
-    console.error("❌ Coda feedback update error:", err);
-  }
+  await fetch(url, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${CODA_API_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      rows: [
+        {
+          cells: [
+            { column: "RID", value: rowId }, // Maps to the "i-..." string
+            { column: "c-W1btQ6Urg3", value: feedbackValue }
+          ]
+        }
+      ],
+      keyColumns: ["RID"] 
+    })
+  });
 }
 
 
