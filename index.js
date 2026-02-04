@@ -746,6 +746,12 @@ slackApp.event("message", async ({ event, client }) => {
               // 🔥 CHANGE: Send channel and ts instead of rowId
               value: JSON.stringify({ channel: event.channel, ts: event.ts }),
               action_id: "helpful_no"
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "🙋‍♂️ Ask KM for help" },
+              value: JSON.stringify({ channel: event.channel, ts: event.ts }),
+              action_id: "helpful_ask_km" // New ID
             }
           ]
         }
@@ -858,42 +864,46 @@ slackApp.action(/helpful_(yes|no)/, async ({ ack, body, client, action }) => {
   try {
     // 1. Parse the channel and ts we passed in the button value
     const { channel, ts } = JSON.parse(action.value);
-    
-    // 2. Determine if it was a 'Yes' or 'No' based on the action_id
-    const feedbackValue = action.action_id === "helpful_yes" ? "Yes" : "No";
+    const actionId = action.action_id;
 
-    // 3. Get the Slack permalink for that specific message
-    const permalinkRes = await client.chat.getPermalink({
-      channel: channel,
-      message_ts: ts
-    });
+    // 1. Determine the feedback label for Coda
+    let feedbackValue = "No"; 
+    if (actionId === "helpful_yes") feedbackValue = "Yes";
+    if (actionId === "helpful_ask_km") feedbackValue = "Escalated to KM";
 
-    // 4. Send to Coda
-    if (permalinkRes.ok) {
-      await logHelpfulFeedback(permalinkRes.permalink, feedbackValue);
-    } else {
-      console.error("❌ Could not get Slack permalink", permalinkRes.error);
-      // Fallback: log without link if permalink fails
-      await logHelpfulFeedback(`Link unavailable (TS: ${ts})`, feedbackValue);
+    // 2. Get Permalink & Log to Coda
+    const permalinkRes = await client.chat.getPermalink({ channel, message_ts: ts });
+    const link = permalinkRes.ok ? permalinkRes.permalink : `Link unavailable (TS: ${ts})`;
+    await logHelpfulFeedback(link, feedbackValue);
+
+    // 3. Handle KM-specific logic
+    if (actionId === "helpful_ask_km") {
+      await client.chat.postMessage({
+        channel: body.channel.id,
+        thread_ts: body.message.ts, // Posts in the same thread
+        text: "Hey <@U098NTVUCM8>! requesting help here. Thank you!", 
+        // NOTE: Use <!subteam^HANDLE> or <@USER_ID> for actual tagging
+      });
     }
 
-    // 5. Update the Slack message to remove buttons and show a thank you
-    const responseText = feedbackValue === "Yes" 
+    // 4. Update the original message to remove buttons
+    const responseText = actionId === "helpful_yes" 
       ? "👍 Glad I could help! Your feedback has been logged." 
-      : "🙏 Thanks for letting me know. I'll use this to improve my answers!";
+      : (actionId === "helpful_no" 
+          ? "🙏 Thanks for letting me know. I'll use this to improve my answers!" 
+          : "📨 I've notified the KM team to assist you further.");
 
     await client.chat.update({
       channel: body.channel.id,
       ts: body.message.ts,
       text: responseText,
-      blocks: [] // This clears the buttons
+      blocks: [] 
     });
 
   } catch (err) {
     console.error("❌ Error processing feedback action:", err);
   }
 });
-
 
 async function logHelpfulFeedback(link, feedbackValue) {
   try {
