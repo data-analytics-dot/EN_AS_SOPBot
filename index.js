@@ -714,6 +714,21 @@ slackApp.event("message", async ({ event, client }) => {
       text: "✅ Got it — I’ll step back. Say *resume* if you need more help.",
     });
 
+    const rowId = await logSopUsageToCoda(client, {
+      userId,
+      channel: event.channel,
+      threadTs: threadId,
+      question: query,
+      sopTitle: answer === NO_SOP_RESPONSE ? null : activeSOP.title,
+      stepFound: answer !== NO_SOP_RESPONSE,
+      status: answer === NO_SOP_RESPONSE ? "No SOP" : "Follow-up Answer",
+      gptResponse: answer,
+      userName: null
+    });
+
+    setUserContext(userId, threadId, { lastRowId: rowId });
+
+     // --- SEND FEEDBACK BUTTONS ---
     await client.chat.postMessage({
     channel: event.channel,
     thread_ts: threadId,
@@ -802,19 +817,9 @@ ${sopContexts}
     text: answer,
   });
 
-  const rowId = await logSopUsageToCoda(client, {
-    userId,
-    channel: event.channel,
-    threadTs: threadId,
-    question: query,
-    sopTitle: answer === NO_SOP_RESPONSE ? null : activeSOP.title,
-    stepFound: answer !== NO_SOP_RESPONSE,
-    status: answer === NO_SOP_RESPONSE ? "No SOP" : "Follow-up Answer",
-    gptResponse: answer,
-    userName: null
-  });
+  
 
-  setUserContext(userId, threadId, { lastRowId: rowId });
+  
 
 });
 
@@ -853,64 +858,32 @@ async function pickBestLiveSOP(query, deprecatedSOP, liveSOPs) {
   console.log("⚡ SOP Bot is running!");
 })();
 
-slackApp.action("helpful_yes", async ({ ack, body, client }) => {
+slackApp.action("helpful_yes", async ({ ack, body }) => {
   await ack();
-
   const { rowId } = JSON.parse(body.actions[0].value);
   await updateCodaFeedback(rowId, "Yes");
-
-  // 🔥 Remove the buttons in the original message
-  await client.chat.update({
-    channel: body.channel.id,
-    ts: body.message.ts,
-    text: "👍 Thanks for the feedback!",
-    blocks: []
-  });
 });
 
-slackApp.action("helpful_no", async ({ ack, body, client }) => {
+slackApp.action("helpful_no", async ({ ack, body }) => {
   await ack();
-
   const { rowId } = JSON.parse(body.actions[0].value);
   await updateCodaFeedback(rowId, "No");
-
-  // 🔥 Remove the buttons in the original message
-  await client.chat.update({
-    channel: body.channel.id,
-    ts: body.message.ts,
-    text: "🙏 Thanks! I’ll improve next time.",
-    blocks: []
-  });
 });
 
 
 async function updateCodaFeedback(rowId, feedbackValue) {
   try {
-    const res = await fetch(
-      `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows/${rowId}`,
-      {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${CODA_API_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          cells: [
-            { column: "c-W1btQ6Urg3", value: feedbackValue } // Yes/No column
-          ]
-        })
-      }
-    );
-
-    if (!res.ok) {
-      console.error(
-        "❌ Failed to update feedback in Coda",
-        res.status,
-        await res.text()
-      );
-    }
+    await coda.rows.update({
+      docId: CODA_DOC_ID_LOGS,
+      tableIdOrName: CODA_TABLE_ID_LOGS,
+      rowId,
+      row: {
+        cells: [{ column: "c-W1btQ6Urg3", value: feedbackValue }],
+      },
+    });
+    console.log(`✅ Updated feedback for row ${rowId}: ${feedbackValue}`);
   } catch (err) {
-    console.error("❌ Coda feedback update error:", err);
+    console.error("❌ Failed to update feedback:", err);
   }
 }
 
