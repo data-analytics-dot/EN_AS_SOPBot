@@ -70,12 +70,8 @@ async function logSopUsageToCoda(client, payload) {
     const json = await res.json();
     console.log("🟦 Coda response:", JSON.stringify(json, null, 2));
 
-    let rowId = json?.rows?.[0]?.id;
-
-    // Handles rare nested structure
-    if (rowId && typeof rowId === "object" && rowId.rowId) {
-      rowId = rowId.rowId;
-    }
+    // Extract rowId from addedRowIds
+    const rowId = json.addedRowIds?.[0];
 
     console.log("🟦 Final rowId used:", rowId);
 
