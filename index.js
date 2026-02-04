@@ -702,10 +702,11 @@ slackApp.event("message", async ({ event, client }) => {
     return;
   }
 
-  // --- Pause / end commands ---
+    // --- Pause / end commands ---
   const pauseCommands = ["done", "resolved"];
   if (pauseCommands.some(cmd => lowerText.includes(cmd))) {
     setUserContext(userId, threadId, { state: "paused" });
+
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts: threadId,
@@ -713,44 +714,40 @@ slackApp.event("message", async ({ event, client }) => {
     });
 
     await client.chat.postMessage({
-    channel: event.channel,
-    thread_ts: threadId,
-    text: "Was this helpful?",
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "Was this helpful?"
-        }
-      },
-      {
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "Yes"
-            },
-            style: "primary",
-            value: JSON.stringify({ rowId: ctx.lastRowId }),
-            action_id: "helpful_yes"
-          },
-          {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "No"
-            },
-            style: "danger",
-           value: JSON.stringify({ rowId: ctx.lastRowId }),
-            action_id: "helpful_no"
+      channel: event.channel,
+      thread_ts: threadId,
+      text: "Was this helpful?",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: "Was this helpful?"
           }
-        ]
-      }
-    ]
-  });
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Yes" },
+              style: "primary",
+              // 🔥 CHANGE: Send channel and ts instead of rowId
+              value: JSON.stringify({ channel: event.channel, ts: event.ts }),
+              action_id: "helpful_yes"
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "No" },
+              style: "danger",
+              // 🔥 CHANGE: Send channel and ts instead of rowId
+              value: JSON.stringify({ channel: event.channel, ts: event.ts }),
+              action_id: "helpful_no"
+            }
+          ]
+        }
+      ]
+    });
     return;
   }
 
@@ -851,58 +848,80 @@ async function pickBestLiveSOP(query, deprecatedSOP, liveSOPs) {
   console.log("⚡ SOP Bot is running!");
 })();
 
-slackApp.action("helpful_yes", async ({ ack, body, client }) => {
+// This regex matches both "helpful_yes" and "helpful_no"
+slackApp.action(/helpful_(yes|no)/, async ({ ack, body, client, action }) => {
   await ack();
 
-  const { rowId } = JSON.parse(body.actions[0].value);
-  await updateCodaFeedback(rowId, "Yes");
+  try {
+    // 1. Parse the channel and ts we passed in the button value
+    const { channel, ts } = JSON.parse(action.value);
+    
+    // 2. Determine if it was a 'Yes' or 'No' based on the action_id
+    const feedbackValue = action.action_id === "helpful_yes" ? "Yes" : "No";
 
-  // 🔥 Remove the buttons in the original message
-  await client.chat.update({
-    channel: body.channel.id,
-    ts: body.message.ts,
-    text: "👍 Thanks for the feedback!",
-    blocks: []
-  });
+    // 3. Get the Slack permalink for that specific message
+    const permalinkRes = await client.chat.getPermalink({
+      channel: channel,
+      message_ts: ts
+    });
+
+    // 4. Send to Coda
+    if (permalinkRes.ok) {
+      await logHelpfulFeedback(permalinkRes.permalink, feedbackValue);
+    } else {
+      console.error("❌ Could not get Slack permalink", permalinkRes.error);
+      // Fallback: log without link if permalink fails
+      await logHelpfulFeedback(`Link unavailable (TS: ${ts})`, feedbackValue);
+    }
+
+    // 5. Update the Slack message to remove buttons and show a thank you
+    const responseText = feedbackValue === "Yes" 
+      ? "👍 Glad I could help! Your feedback has been logged." 
+      : "🙏 Thanks for letting me know. I'll use this to improve my answers!";
+
+    await client.chat.update({
+      channel: body.channel.id,
+      ts: body.message.ts,
+      text: responseText,
+      blocks: [] // This clears the buttons
+    });
+
+  } catch (err) {
+    console.error("❌ Error processing feedback action:", err);
+  }
 });
 
-slackApp.action("helpful_no", async ({ ack, body, client }) => {
-  await ack();
 
-  const { rowId } = JSON.parse(body.actions[0].value);
-  await updateCodaFeedback(rowId, "No");
+async function logHelpfulFeedback(link, feedbackValue) {
+  try {
+    const url = `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/grid-_srsDavruy/rows`;
 
-  // 🔥 Remove the buttons in the original message
-  await client.chat.update({
-    channel: body.channel.id,
-    ts: body.message.ts,
-    text: "🙏 Thanks! I’ll improve next time.",
-    blocks: []
-  });
-});
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${CODA_API_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        rows: [
+          {
+            cells: [
+              { column: "c-ZbMVbrSEQI", value: link },         // Link column
+              { column: "c-xbu_Ws9t5n", value: feedbackValue } // Response column
+            ]
+          }
+        ]
+      })
+    });
 
-
-async function updateCodaFeedback(rowId, feedbackValue) {
-  const url = `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows`;
-
-  await fetch(url, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${CODA_API_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      rows: [
-        {
-          cells: [
-            { column: "RID", value: rowId }, // Maps to the "i-..." string
-            { column: "c-W1btQ6Urg3", value: feedbackValue }
-          ]
-        }
-      ],
-      keyColumns: ["RID"] 
-    })
-  });
+    if (!res.ok) {
+      console.error("❌ Coda feedback log failed:", res.status, await res.text());
+    } else {
+      console.log(`✅ Feedback "${feedbackValue}" logged for link: ${link}`);
+    }
+  } catch (err) {
+    console.error("❌ Coda feedback logging error:", err);
+  }
 }
 
 
