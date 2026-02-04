@@ -23,10 +23,8 @@ const PHASE_END_COLUMN_ID = process.env.PHASE_END_COLUMN_ID;
 
 async function logSopUsageToCoda(client, payload) {
   try {
-
     const userName = payload.userName || await getSlackUserName(client, payload.userId);
 
-    // 🚀 Fetch phase info
     const phases = await fetchPhases();
     const activePhase = getActivePhase(phases);
 
@@ -52,7 +50,7 @@ async function logSopUsageToCoda(client, payload) {
                 { column: "c-vJpPj2lNsj", value: String(payload.threadTs) },
                 { column: "c-dgNIZbOVZQ", value: payload.question },
                 { column: "c-F8uEMuDPA-", value: payload.sopTitle ?? "" },
-                { column: "c-sF9gP8NODB", value: payload.stepFound ? "Yes" : "No"},
+                { column: "c-sF9gP8NODB", value: payload.stepFound ? "Yes" : "No" },
                 { column: "c-ZqQoPmZ3M0", value: payload.status },
                 { column: "c-y669WSSbMO", value: payload.gptResponse ?? "" },
                 { column: "c-awpUarmk0l", value: phaseName },
@@ -66,11 +64,21 @@ async function logSopUsageToCoda(client, payload) {
 
     if (!res.ok) {
       console.error("❌ Coda log failed:", res.status, await res.text());
+      return null;
     }
+
+    const json = await res.json();
+
+    // ⬅️ VERY IMPORTANT: return the row ID Coda generated
+    const rowId = json?.rows?.[0]?.id;
+    return rowId;
+
   } catch (err) {
     console.error("❌ Failed to log SOP usage to Coda", err);
+    return null;
   }
 }
+
 
 async function fetchPhases() {
   const res = await fetch(
@@ -422,81 +430,6 @@ async function getSlackUserName(client, userId) {
   }
 }
 
-
-// function filterRelevantSOPs(sops, query) {
-//   const q = query.toLowerCase().replace(/[^\w\s]/g, "").trim();
-//   const queryWords = q.split(/\s+/).filter(Boolean);
-
-//   console.log(`\n🔍 Filtering SOPs for query: "${query}"`);
-
-//   const scored = sops.map((s) => {
-//     const title = (s.title || "").toLowerCase();
-//     const content = (s.sop || "").toLowerCase();
-//     const tagsRaw = s.tags || "";
-//     const tags = Array.isArray(tagsRaw)
-//       ? tagsRaw.map(t => t.toLowerCase().trim())
-//       : tagsRaw.toLowerCase().split(/[,;|]/).map(t => t.trim()).filter(Boolean);
-
-//     let score = 0;
-
-//     //
-//     // 🔹 1. Title match score
-//     //
-//     let titleMatch = 0;
-//     const titleWords = title.split(/\s+/).filter(Boolean);
-//     for (const w of queryWords) {
-//       if (titleWords.some(tw => tw.includes(w))) titleMatch++;
-//     }
-//     score += titleMatch * 10;
-
-//     //
-//     // 🔹 2. Content match score
-//     //
-//     let contentMatch = 0;
-//     for (const w of queryWords) {
-//       if (content.includes(w)) contentMatch++;
-//     }
-//     score += contentMatch * 2;
-
-//     //
-//     // 🔹 3. NEW: Tag match score
-//     //
-//     let tagMatch = 0;
-//     for (const w of queryWords) {
-//       for (const tag of tags) {
-//         if (tag === w) {
-//           tagMatch += 3;       // exact match = strong
-//         } else if (tag.includes(w)) {
-//           tagMatch += 1;       // partial match = soft
-//         }
-//       }
-//     }
-//     score += tagMatch * 10;    // Tag matches carry heavier weight
-
-//     //
-//     // We attach the final score
-//     //
-//     return { ...s, score };
-//   });
-
-//   //
-//   // Sorting & selecting top
-//   //
-//   const sorted = scored.sort((a, b) => b.score - a.score);
-//   const filtered = sorted.filter(s => s.score > 0);
-
-//   const top = filtered.length > 0 ? filtered.slice(0, 3) : sorted.slice(0, 2);
-
-//   if (top.length > 0) {
-//     console.log(`✅ Top match: "${top[0].title}" (score ${top[0].score})`);
-//   } else {
-//     console.log("⚠️ No relevant SOP found");
-//   }
-
-//   return top;
-// }
-
-
 // --- Handle app mention ---
 
 slackApp.event("app_mention", async ({ event, client }) => {
@@ -521,17 +454,6 @@ slackApp.event("app_mention", async ({ event, client }) => {
   });
 
   const lowerText = query.toLowerCase();
-
-  // ⏸ Pause / end conversation
-  if (["done", "resolved"].some((w) => lowerText.includes(w))) {
-    setUserContext(userId, thread_ts, { state: "paused" });
-    await client.chat.postMessage({
-      channel: event.channel,
-      thread_ts,
-      text: "✅ Got it — I’ll step back. Say *resume* or mention me if you need more help.",
-    });
-    return;
-  }
 
   // 🔄 Resume conversation
   if (lowerText === "resume") {
@@ -791,6 +713,46 @@ slackApp.event("message", async ({ event, client }) => {
       thread_ts: threadId,
       text: "✅ Got it — I’ll step back. Say *resume* if you need more help.",
     });
+
+    await client.chat.postMessage({
+    channel: event.channel,
+    thread_ts: threadId,
+    text: "Was this helpful?",
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "Was this helpful?"
+        }
+      },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Yes"
+            },
+            style: "primary",
+            value: JSON.stringify({ rowId: ctx.lastRowId }),
+            action_id: "helpful_yes"
+          },
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "No"
+            },
+            style: "danger",
+           value: JSON.stringify({ rowId: ctx.lastRowId }),
+            action_id: "helpful_no"
+          }
+        ]
+      }
+    ]
+  });
     return;
   }
 
@@ -840,16 +802,19 @@ ${sopContexts}
     text: answer,
   });
 
-  await logSopUsageToCoda(client, {
-      userId: userId,
-      channel: event.channel,
-      threadTs: threadId,
-      question: query,
-      sopTitle: answer === NO_SOP_RESPONSE ? null : activeSOP.title,
-      stepFound: answer === NO_SOP_RESPONSE ? false : true,
-      status: answer === NO_SOP_RESPONSE ? "No SOP" : "Follow-up Answer",
-      gptResponse: answer
+  const rowId = await logSopUsageToCoda(client, {
+    userId,
+    channel: event.channel,
+    threadTs: threadId,
+    question: query,
+    sopTitle: answer === NO_SOP_RESPONSE ? null : activeSOP.title,
+    stepFound: answer !== NO_SOP_RESPONSE,
+    status: answer === NO_SOP_RESPONSE ? "No SOP" : "Follow-up Answer",
+    gptResponse: answer,
+    userName: null
   });
+
+  setUserContext(userId, threadId, { lastRowId: rowId });
 
 });
 
@@ -881,40 +846,72 @@ async function pickBestLiveSOP(query, deprecatedSOP, liveSOPs) {
     return liveSOPs[idx - 1] ?? liveSOPs[0];
 }
 
-
-
-// --- Handle yes/no replies in thread ---
-// slackApp.event("message", async ({ event, client }) => {
-//   // Ignore bot messages or messages not in a thread
-//   if (event.subtype === "bot_message" || !event.thread_ts) return;
-
-//   const userId = event.user;
-//   const session = userSessions[userId];
-//   const text = (event.text || "").trim().toLowerCase();
-
-//   // Only respond if the user has an active confirmation session in this thread
-//   if (!session?.awaitingConfirmation || session.thread_ts !== event.thread_ts) return;
-
-//   if (["yes", "yep", "yeah"].includes(text)) {
-//     await client.chat.postMessage({
-//       channel: event.channel,
-//       thread_ts: event.thread_ts,
-//       text: "Glad I could help! You can view or search this SOP and others directly here: <https://coda.io/d/SOP-Database_dRB4PLkqlNM|SOP Library>. 🔍",
-//     });
-//     clearSession(userId);
-//   } else if (["no", "nope", "nah"].includes(text)) {
-//     await client.chat.postMessage({
-//       channel: event.channel,
-//       thread_ts: event.thread_ts,
-//       text: "Alright, go ahead and ask your next question. 🙂",
-//     });
-//     clearSession(userId);
-//   }
-// });
-
 // --- Start Slack App ---
 (async () => {
   await loadSessions();
   await slackApp.start();
   console.log("⚡ SOP Bot is running!");
 })();
+
+slackApp.action("helpful_yes", async ({ ack, body, client }) => {
+  await ack();
+
+  // Extract rowId stored in button value
+  const { rowId } = JSON.parse(body.actions[0].value);
+
+  // Log feedback to Coda
+  await updateCodaFeedback(rowId, "Yes");
+
+  await client.chat.postMessage({
+    channel: body.channel.id,
+    thread_ts: body.message.thread_ts || body.message.ts,
+    text: "👍 Thanks for the feedback!"
+  });
+});
+
+
+slackApp.action("helpful_no", async ({ ack, body, client }) => {
+  await ack();
+
+  // Extract rowId stored in button value
+  const { rowId } = JSON.parse(body.actions[0].value);
+
+  // Log feedback to Coda
+  await updateCodaFeedback(rowId, "No");
+
+  await client.chat.postMessage({
+    channel: body.channel.id,
+    thread_ts: body.message.thread_ts || body.message.ts,
+    text: "🙏 Thanks! I’ll improve next time. If you need more help, just ask."
+  });
+});
+
+async function updateCodaFeedback(rowId, feedbackValue) {
+  try {
+    const res = await fetch(
+      `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows/${rowId}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${CODA_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          row: {
+            cells: [
+              { column: "c-W1btQ6Urg3", value: feedbackValue } // ⬅️ YES/NO column
+            ]
+          }
+        })
+      }
+    );
+
+    if (!res.ok) {
+      console.error("❌ Failed to update feedback in Coda", res.status, await res.text());
+    }
+
+  } catch (err) {
+    console.error("❌ Coda feedback update error:", err);
+  }
+}
+
