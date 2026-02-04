@@ -903,9 +903,9 @@ async function updateCodaFeedback(rowId, feedbackValue) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          mutateRows: [
+          rows: [
             {
-              id: rowId,
+              id: rowId, // update existing row
               cells: [
                 { column: "c-W1btQ6Urg3", value: feedbackValue }
               ]
@@ -927,6 +927,7 @@ async function updateCodaFeedback(rowId, feedbackValue) {
     console.error("❌ Coda feedback update error:", err);
   }
 }
+
 
 
 
