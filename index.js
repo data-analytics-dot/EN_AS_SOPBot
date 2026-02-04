@@ -890,8 +890,8 @@ slackApp.action(/helpful_(yes|no|ask_km)/, async ({ ack, body, client, action })
     const responseText = actionId === "helpful_yes" 
       ? "👍 Glad I could help! Your feedback has been logged." 
       : (actionId === "helpful_no" 
-          ? "🙏 Thanks for letting me know. I'll use this to improve my answers!" 
-          : "📨 I've notified the KM team to assist you further.");
+          ? "🙏 Thanks for letting me know. The team will work on this!" 
+          : "📨 KM team notified.");
 
     await client.chat.update({
       channel: body.channel.id,
