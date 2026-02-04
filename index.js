@@ -218,6 +218,7 @@ function scheduleSaveSessions() {
 }
 
 
+
 // --- Init Slack + OpenAI ---
 
 const slackApp = new App({
@@ -642,7 +643,7 @@ ${sopContexts}`;
     text: finalText,
   });
 
-  const rowId = await logSopUsageToCoda(client, {
+  await logSopUsageToCoda(client, {
     userId: userId,
     channel: event.channel,
     threadTs: thread_ts,
@@ -659,12 +660,9 @@ ${sopContexts}`;
   }
 
   setUserContext(userId, thread_ts, {
-    lastRowId: rowId,
     lastSOP: chosenSOP,
-    lastAnswer: answer,
-    lastQuery: query,
-    activeSOPs: topSops,
     lastStepNumber: 1,
+    activeSOPs: topSops,
   });
 });
 
@@ -714,7 +712,45 @@ slackApp.event("message", async ({ event, client }) => {
       text: "✅ Got it — I’ll step back. Say *resume* if you need more help.",
     });
 
-    
+    await client.chat.postMessage({
+    channel: event.channel,
+    thread_ts: threadId,
+    text: "Was this helpful?",
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "Was this helpful?"
+        }
+      },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Yes"
+            },
+            style: "primary",
+            value: JSON.stringify({ rowId: ctx.lastRowId }),
+            action_id: "helpful_yes"
+          },
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "No"
+            },
+            style: "danger",
+           value: JSON.stringify({ rowId: ctx.lastRowId }),
+            action_id: "helpful_no"
+          }
+        ]
+      }
+    ]
+  });
     return;
   }
 
@@ -777,47 +813,6 @@ ${sopContexts}
   });
 
   setUserContext(userId, threadId, { lastRowId: rowId });
-
-
-  await client.chat.postMessage({
-    channel: event.channel,
-    thread_ts: threadId,
-    text: "Was this helpful?",
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "Was this helpful?"
-        }
-      },
-      {
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "Yes"
-            },
-            style: "primary",
-            value: JSON.stringify({ rowId: ctx.lastRowId }),
-            action_id: "helpful_yes"
-          },
-          {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "No"
-            },
-            style: "danger",
-           value: JSON.stringify({ rowId: ctx.lastRowId }),
-            action_id: "helpful_no"
-          }
-        ]
-      }
-    ]
-  });
 
 });
 
@@ -890,16 +885,21 @@ slackApp.action("helpful_no", async ({ ack, body, client }) => {
 async function updateCodaFeedback(rowId, feedbackValue) {
   try {
     const res = await fetch(
-      `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows/${rowId}`,
+      `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows`,
       {
-        method: "PUT",
+        method: "POST",
         headers: {
           Authorization: `Bearer ${CODA_API_TOKEN}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          cells: [
-            { column: "c-W1btQ6Urg3", value: feedbackValue } // Yes/No column
+          rows: [
+            {
+              id: rowId, // update existing row
+              cells: [
+                { column: "c-W1btQ6Urg3", value: feedbackValue }
+              ]
+            }
           ]
         })
       }
@@ -912,11 +912,11 @@ async function updateCodaFeedback(rowId, feedbackValue) {
         await res.text()
       );
     }
+
   } catch (err) {
     console.error("❌ Coda feedback update error:", err);
   }
 }
-
 
 
 
