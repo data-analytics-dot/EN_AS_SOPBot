@@ -75,6 +75,9 @@ async function logSopUsageToCoda(client, payload) {
 
     console.log("🟦 Final rowId used:", rowId);
 
+    // ✅ Add a tiny delay to ensure row is ready in Coda
+    await new Promise(resolve => setTimeout(resolve, 150));
+
     return rowId;
 
 
