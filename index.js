@@ -884,33 +884,30 @@ slackApp.action("helpful_no", async ({ ack, body, client }) => {
 
 async function updateCodaFeedback(rowId, feedbackValue) {
   try {
-    const res = await fetch(
-      `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${CODA_API_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          rows: [
-            {
-              id: rowId, // update existing row
-              cells: [
-                { column: "c-W1btQ6Urg3", value: feedbackValue }
-              ]
-            }
-          ]
-        })
-      }
-    );
+    const url = `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows`;
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${CODA_API_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        rows: [
+          {
+            cells: [
+              { column: "id", value: rowId }, 
+              { column: "c-W1btQ6Urg3", value: feedbackValue }
+            ]
+          }
+        ],
+        keyColumns: ["id"] 
+      }) 
+    }); 
 
     if (!res.ok) {
-      console.error(
-        "❌ Failed to update feedback in Coda",
-        res.status,
-        await res.text()
-      );
+      const errorText = await res.text();
+      console.error("❌ Coda update failed:", res.status, errorText);
     }
 
   } catch (err) {
