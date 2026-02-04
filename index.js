@@ -895,16 +895,21 @@ slackApp.action("helpful_no", async ({ ack, body, client }) => {
 async function updateCodaFeedback(rowId, feedbackValue) {
   try {
     const res = await fetch(
-      `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows/${rowId}`,
+      `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/${CODA_TABLE_ID_LOGS}/rows`,
       {
-        method: "PUT",
+        method: "POST",
         headers: {
           Authorization: `Bearer ${CODA_API_TOKEN}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          cells: [
-            { column: "c-W1btQ6Urg3", value: feedbackValue }
+          mutateRows: [
+            {
+              id: rowId,
+              cells: [
+                { column: "c-W1btQ6Urg3", value: feedbackValue }
+              ]
+            }
           ]
         })
       }
@@ -922,5 +927,6 @@ async function updateCodaFeedback(rowId, feedbackValue) {
     console.error("❌ Coda feedback update error:", err);
   }
 }
+
 
 
