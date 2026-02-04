@@ -68,10 +68,19 @@ async function logSopUsageToCoda(client, payload) {
     }
 
     const json = await res.json();
+    console.log("🟦 Coda response:", JSON.stringify(json, null, 2));
 
-    // ⬅️ VERY IMPORTANT: return the row ID Coda generated
-    const rowId = json?.rows?.[0]?.id;
+    let rowId = json?.rows?.[0]?.id;
+
+    // Handles rare nested structure
+    if (rowId && typeof rowId === "object" && rowId.rowId) {
+      rowId = rowId.rowId;
+    }
+
+    console.log("🟦 Final rowId used:", rowId);
+
     return rowId;
+
 
   } catch (err) {
     console.error("❌ Failed to log SOP usage to Coda", err);
@@ -856,35 +865,33 @@ async function pickBestLiveSOP(query, deprecatedSOP, liveSOPs) {
 slackApp.action("helpful_yes", async ({ ack, body, client }) => {
   await ack();
 
-  // Extract rowId stored in button value
   const { rowId } = JSON.parse(body.actions[0].value);
-
-  // Log feedback to Coda
   await updateCodaFeedback(rowId, "Yes");
 
-  await client.chat.postMessage({
+  // 🔥 Remove the buttons in the original message
+  await client.chat.update({
     channel: body.channel.id,
-    thread_ts: body.message.thread_ts || body.message.ts,
-    text: "👍 Thanks for the feedback!"
+    ts: body.message.ts,
+    text: "👍 Thanks for the feedback!",
+    blocks: []
   });
 });
-
 
 slackApp.action("helpful_no", async ({ ack, body, client }) => {
   await ack();
 
-  // Extract rowId stored in button value
   const { rowId } = JSON.parse(body.actions[0].value);
-
-  // Log feedback to Coda
   await updateCodaFeedback(rowId, "No");
 
-  await client.chat.postMessage({
+  // 🔥 Remove the buttons in the original message
+  await client.chat.update({
     channel: body.channel.id,
-    thread_ts: body.message.thread_ts || body.message.ts,
-    text: "🙏 Thanks! I’ll improve next time. If you need more help, just ask."
+    ts: body.message.ts,
+    text: "🙏 Thanks! I’ll improve next time.",
+    blocks: []
   });
 });
+
 
 async function updateCodaFeedback(rowId, feedbackValue) {
   try {
@@ -897,21 +904,24 @@ async function updateCodaFeedback(rowId, feedbackValue) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          row: {
-            cells: [
-              { column: "c-W1btQ6Urg3", value: feedbackValue } // ⬅️ YES/NO column
-            ]
-          }
+          cells: [
+            { column: "c-W1btQ6Urg3", value: feedbackValue }
+          ]
         })
       }
     );
 
     if (!res.ok) {
-      console.error("❌ Failed to update feedback in Coda", res.status, await res.text());
+      console.error(
+        "❌ Failed to update feedback in Coda",
+        res.status,
+        await res.text()
+      );
     }
 
   } catch (err) {
     console.error("❌ Coda feedback update error:", err);
   }
 }
+
 
