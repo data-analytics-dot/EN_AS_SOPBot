@@ -683,13 +683,12 @@ slackApp.event("message", async ({ event, client }) => {
   const userId = event.user;
   const threadId = event.thread_ts;
 
-    // ⏳ Expire stale context for this user + thread
+  // ⏳ Expire stale context for this user + thread
   let ctx = getUserContext(userId, threadId);
   if (!ctx || Date.now() - ctx.timestamp > SESSION_TTL_MS) {
     resetUserContext(userId, threadId);
-    ctx = getUserContext(userId, threadId); // refresh
+    ctx = getUserContext(userId, threadId);
   }
-
 
   const lowerText = (event.text || "").toLowerCase();
 
@@ -716,59 +715,77 @@ slackApp.event("message", async ({ event, client }) => {
   const pauseCommands = ["done", "resolved"];
   if (pauseCommands.some(cmd => lowerText.includes(cmd))) {
     setUserContext(userId, threadId, { state: "paused" });
+
+    // 1️⃣ Log last active SOP usage first
+    const activeSOP = ctx.activeSOPs?.[0];
+    let rowId = null;
+
+    if (activeSOP) {
+      rowId = await logSopUsageToCoda(client, {
+        userId,
+        channel: event.channel,
+        threadTs: threadId,
+        question: activeSOP.lastQuery || "",
+        sopTitle: activeSOP.title,
+        stepFound: true,
+        status: "Follow-up Answer",
+        gptResponse: activeSOP.lastAnswer || "",
+        userName: null
+      });
+
+      // optional tiny delay to ensure Coda row is ready
+      await new Promise(r => setTimeout(r, 150));
+
+      setUserContext(userId, threadId, { lastRowId: rowId });
+    }
+
+    // 2️⃣ Send pause confirmation
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts: threadId,
       text: "✅ Got it — I’ll step back. Say *resume* if you need more help.",
     });
 
-    await client.chat.postMessage({
-    channel: event.channel,
-    thread_ts: threadId,
-    text: "Was this helpful?",
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "Was this helpful?"
-        }
-      },
-      {
-        type: "actions",
-        elements: [
+    // 3️⃣ Send feedback buttons only if we have a rowId
+    if (rowId) {
+      await client.chat.postMessage({
+        channel: event.channel,
+        thread_ts: threadId,
+        text: "Was this helpful?",
+        blocks: [
           {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "Yes"
-            },
-            style: "primary",
-            value: JSON.stringify({ rowId: ctx.lastRowId }),
-            action_id: "helpful_yes"
+            type: "section",
+            text: { type: "mrkdwn", text: "Was this helpful?" }
           },
           {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "No"
-            },
-            style: "danger",
-           value: JSON.stringify({ rowId: ctx.lastRowId }),
-            action_id: "helpful_no"
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: { type: "plain_text", text: "Yes" },
+                style: "primary",
+                value: JSON.stringify({ rowId }),
+                action_id: "helpful_yes"
+              },
+              {
+                type: "button",
+                text: { type: "plain_text", text: "No" },
+                style: "danger",
+                value: JSON.stringify({ rowId }),
+                action_id: "helpful_no"
+              }
+            ]
           }
         ]
-      }
-    ]
-  });
+      });
+    }
+
     return;
   }
 
-
-    // 🚫 Ignore unless explicitly active
+  // 🚫 Ignore unless explicitly active
   if (ctx.state !== "active") return;
   if (!ctx.activeSOPs?.length) return;
-
 
   const activeSOP = ctx.activeSOPs[0];
   const query = event.text.trim();
@@ -822,9 +839,9 @@ ${sopContexts}
     userName: null
   });
 
-  setUserContext(userId, threadId, { lastRowId: rowId });
-
+  setUserContext(userId, threadId, { lastRowId: rowId, lastSOP: activeSOP.title, lastAnswer: answer, lastQuery: query });
 });
+
 
 async function pickBestLiveSOP(query, deprecatedSOP, liveSOPs) {
     const prompt = `
