@@ -445,7 +445,7 @@ slackApp.event("app_mention", async ({ event, client }) => {
   console.log(`User asked: ${query}`);
 
   // --- Retrieve or initialize user context for this thread ---
-  const context = getUserContext(userId, thread_ts);
+  //const context = getUserContext(userId, thread_ts);
 
   // setUserContext(userId, thread_ts, {
   //   state: "active",
@@ -464,40 +464,6 @@ slackApp.event("app_mention", async ({ event, client }) => {
         text: `🔄 Resumed. We were on *${ctx.lastSOP ?? "your SOP"}*.`,
       });
     }
-    return;
-  }
-
-  // ⏭️ Next step
-  if (context.lastSOP && lowerText.includes("next step")) {
-    context.lastStepNumber = (context.lastStepNumber || 1) + 1;
-    await client.chat.postMessage({
-      channel: event.channel,
-      thread_ts,
-      text: `Next step for *${context.lastSOP}* is Step ${context.lastStepNumber}.`,
-    });
-    setUserContext(userId, thread_ts, context);
-    return;
-  }
-
-  // ⏮️ Previous step
-  if (context.lastSOP && lowerText.includes("previous step")) {
-    context.lastStepNumber = Math.max(1, (context.lastStepNumber || 2) - 1);
-    await client.chat.postMessage({
-      channel: event.channel,
-      thread_ts,
-      text: `Previous step for *${context.lastSOP}* is Step ${context.lastStepNumber}.`,
-    });
-    setUserContext(userId, thread_ts, context);
-    return;
-  }
-
-  // ❓ Ask which step this is
-  if (context.lastSOP && lowerText.includes("what step")) {
-    await client.chat.postMessage({
-      channel: event.channel,
-      thread_ts,
-      text: `Based on your last question, this is Step ${context.lastStepNumber || 1} from *${context.lastSOP}*.`,
-    });
     return;
   }
 
@@ -649,12 +615,20 @@ ${sopContexts}`;
     return;
   }
 
+  const chosenSopIndex = topSops.findIndex(s => s.title === chosenSOP);
+
+  // Re-order topSops so the chosen one is first
+ const validatedSOPObject = topSops.find(s => s.title === chosenSOP);
+
+  // If GPT chose it, that is now our ONLY active SOP for this thread
+  const finalLockedSOPs = validatedSOPObject ? [validatedSOPObject] : [topSops[0]];
+
   setUserContext(userId, thread_ts, {
-    ...ctx,               
-    state: "active",      
+    ...ctx,
+    state: "active",
     lastSOP: chosenSOP,
     lastStepNumber: 1,
-    activeSOPs: topSops,  
+    activeSOPs: finalLockedSOPs, // 🔒 This locks it for the "message" event!
     timestamp: Date.now()
   });
 
