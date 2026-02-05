@@ -649,20 +649,14 @@ ${sopContexts}`;
     return;
   }
 
-  if (!ctx?.activeSOPs?.length) {
-    setUserContext(userId, thread_ts, {
-      ...ctx, // Always spread to be safe
-      state: "active",
-      lastSOP: chosenSOP,
-      lastStepNumber: 1,
-      activeSOPs: topSops, // This "locks" the SOP to the thread
-    });
-  } else {
-    setUserContext(userId, thread_ts, {
-      state: "active",
-      lastSOP: ctx.lastSOP,
-    });
-  }
+  setUserContext(userId, thread_ts, {
+    ...ctx,               
+    state: "active",      
+    lastSOP: chosenSOP,
+    lastStepNumber: 1,
+    activeSOPs: topSops,  
+    timestamp: Date.now()
+  });
 
 });
 
@@ -688,7 +682,7 @@ slackApp.event("message", async ({ event, client }) => {
     if (ctx.state === "paused") {
       // 🔥 FIX: Spread the existing 'ctx' so we keep the SOP details!
       setUserContext(userId, threadId, { 
-        ...ctx, 
+        ...ctx,      // 🔑 Preserve SOP data
         state: "active" 
       });
       
@@ -708,7 +702,7 @@ slackApp.event("message", async ({ event, client }) => {
   if (pauseCommands.includes(lowerText)) {
     // 🔥 FIX: Spread the existing context (ctx) so we don't lose the SOP info!
     setUserContext(userId, threadId, { 
-      ...ctx, 
+      ...ctx,      // 🔑 Preserve SOP data
       state: "paused" 
     });
 
@@ -821,9 +815,9 @@ ${sopContexts}
   });
 
   setUserContext(userId, threadId, { 
-  ...ctx,           
-  lastRowId: rowId  
-});
+    ...ctx,           
+    lastRowId: rowId  
+  });
 
 });
 
