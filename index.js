@@ -651,10 +651,11 @@ ${sopContexts}`;
 
   if (!ctx?.activeSOPs?.length) {
     setUserContext(userId, thread_ts, {
+      ...ctx, // Always spread to be safe
       state: "active",
       lastSOP: chosenSOP,
       lastStepNumber: 1,
-      activeSOPs: topSops,
+      activeSOPs: topSops, // This "locks" the SOP to the thread
     });
   } else {
     setUserContext(userId, thread_ts, {
@@ -819,7 +820,10 @@ ${sopContexts}
     userName: null
   });
 
-  setUserContext(userId, threadId, { lastRowId: rowId });
+  setUserContext(userId, threadId, { 
+  ...ctx,           
+  lastRowId: rowId  
+});
 
 });
 
