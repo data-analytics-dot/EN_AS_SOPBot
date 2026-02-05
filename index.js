@@ -172,7 +172,6 @@ function resetUserContext(userId, thread_ts) {
 }
 
 
-
 let userSessions = {};
 let _saveTimeout = null;
 
@@ -216,8 +215,6 @@ function scheduleSaveSessions() {
     saveSessionsNow();
   }, SAVE_DELAY_MS);
 }
-
-
 
 // --- Init Slack + OpenAI ---
 
@@ -436,20 +433,23 @@ slackApp.event("app_mention", async ({ event, client }) => {
   const thread_ts = event.thread_ts || event.ts;
 
   // ⏳ Expire stale context for this user + thread
-  const ctx = getUserContext(userId, thread_ts);
-  if (Date.now() - ctx.timestamp > SESSION_TTL_MS) {
+  let ctx = getUserContext(userId, thread_ts);
+
+  if (!ctx || Date.now() - ctx.timestamp > SESSION_TTL_MS) {
     resetUserContext(userId, thread_ts);
+    ctx = getUserContext(userId, thread_ts); // refresh
   }
 
-  const session = userSessions[userId] || {};
+
+  // const session = userSessions[userId] || {};
   console.log(`User asked: ${query}`);
 
   // --- Retrieve or initialize user context for this thread ---
   const context = getUserContext(userId, thread_ts);
 
-  setUserContext(userId, thread_ts, {
-    state: "active",
-  });
+  // setUserContext(userId, thread_ts, {
+  //   state: "active",
+  // });
 
   const lowerText = query.toLowerCase();
 
@@ -464,17 +464,6 @@ slackApp.event("app_mention", async ({ event, client }) => {
         text: `🔄 Resumed. We were on *${ctx.lastSOP ?? "your SOP"}*.`,
       });
     }
-    return;
-  }
-
-  // 🧭 Reset context
-  if (lowerText.includes("start over") || lowerText.includes("reset")) {
-    resetUserContext(userId, thread_ts);
-    await client.chat.postMessage({
-      channel: event.channel,
-      thread_ts,
-      text: "Got it — starting fresh! What SOP do you want to ask about?",
-    });
     return;
   }
 
@@ -516,9 +505,10 @@ slackApp.event("app_mention", async ({ event, client }) => {
   let topSops;
   let isFollowUp = false;
 
-  if (session?.activeSOPs && session.thread_ts === thread_ts) {
-    console.log("💬 Follow-up question detected — reusing previous SOPs");
-    topSops = session.activeSOPs;
+  // 🔒 FIX #1: thread-level SOP lock
+  if (ctx?.activeSOPs?.length) {
+    console.log("🔒 Follow-up detected — using locked SOP");
+    topSops = ctx.activeSOPs;
     isFollowUp = true;
   } else {
     const sops = await fetchSOPs();
@@ -659,11 +649,20 @@ ${sopContexts}`;
     return;
   }
 
-  setUserContext(userId, thread_ts, {
-    lastSOP: chosenSOP,
-    lastStepNumber: 1,
-    activeSOPs: topSops,
-  });
+  if (!ctx?.activeSOPs?.length) {
+    setUserContext(userId, thread_ts, {
+      state: "active",
+      lastSOP: chosenSOP,
+      lastStepNumber: 1,
+      activeSOPs: topSops,
+    });
+  } else {
+    setUserContext(userId, thread_ts, {
+      state: "active",
+      lastSOP: ctx.lastSOP,
+    });
+  }
+
 });
 
 slackApp.event("message", async ({ event, client }) => {
@@ -681,7 +680,7 @@ slackApp.event("message", async ({ event, client }) => {
   }
 
 
-  const lowerText = (event.text || "").toLowerCase();
+  const lowerText = (event.text || "").toLowerCase().trim();
 
   // --- Resume ---
   if (lowerText === "resume") {
@@ -702,8 +701,10 @@ slackApp.event("message", async ({ event, client }) => {
   }
 
     // --- Pause / end commands ---
-  const pauseCommands = ["done", "resolved"];
-  if (pauseCommands.some(cmd => lowerText.includes(cmd))) {
+
+    
+    const pauseCommands = ["done", "resolved"];
+  if (pauseCommands.includes(lowerText)) {
     // 🔥 FIX: Spread the existing context (ctx) so we don't lose the SOP info!
     setUserContext(userId, threadId, { 
       ...ctx, 
@@ -881,7 +882,7 @@ slackApp.action(/helpful_(yes|no|ask_km)/, async ({ ack, body, client, action })
       await client.chat.postMessage({
         channel: body.channel.id,
         thread_ts: body.message.ts, // Posts in the same thread
-        text: "Hey <@U098NTVUCM8>! requesting help here. Thank you!", 
+        text: "Hey <!subteam^S07G8D95PU7> requesting help here. Thank you!", 
         // NOTE: Use <!subteam^HANDLE> or <@USER_ID> for actual tagging
       });
     }
