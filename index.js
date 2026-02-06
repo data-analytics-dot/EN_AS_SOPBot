@@ -468,18 +468,22 @@ slackApp.event("app_mention", async ({ event, client }) => {
   }
 
   // --- Fetch or reuse SOPs ---
+  const allSops = await fetchSOPs();
   let topSops;
   let isFollowUp = false;
 
+
+  topSops = filterRelevantSOPs(allSops, query);
   // 🔒 FIX #1: thread-level SOP lock
-  if (ctx?.activeSOPs?.length) {
-    console.log("🔒 Follow-up detected — using locked SOP");
-    topSops = ctx.activeSOPs;
-    isFollowUp = true;
-  } else {
-    const sops = await fetchSOPs();
-    topSops = filterRelevantSOPs(sops, query);
-  }
+  
+  // if (ctx?.activeSOPs?.length) {
+  //   console.log("🔒 Follow-up detected — using locked SOP");
+  //   topSops = ctx.activeSOPs;
+  //   isFollowUp = true;
+  // } else {
+  //   const sops = await fetchSOPs();
+  //   topSops = filterRelevantSOPs(sops, query);
+  // }
 
   if (topSops.length === 0) {
     await client.chat.postMessage({
@@ -635,6 +639,10 @@ ${sopContexts}`;
 slackApp.event("message", async ({ event, client }) => {
   if (event.subtype === "bot_message") return;
   if (!event.thread_ts) return;
+
+  if (event.text && event.text.includes(`<@${process.env.SLACK_BOT_USER_ID}>`)) {
+    return; 
+  }
 
   const userId = event.user;
   const threadId = event.thread_ts;
