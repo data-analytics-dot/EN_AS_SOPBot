@@ -564,6 +564,9 @@ Rules:
    - 💡 Tips that help execute the step more efficiently or correctly
    - ⚠️ Warnings or cautions if there are common mistakes, risks, or edge cases
    - 📝 Notes for important context or clarifications
+   - 🔢 Include any computations, formulas, or numeric examples exactly as stated in the SOP step if relevant to the question
+   - 📎 Include any forms, templates, links, or tools mentioned in the SOP that are relevant to the question, formatted as Slack hyperlinks: <URL|Title>
+6. Formatting rules:
    Formatting rules:
    - Insert a blank line between different insight types
    Only include items that are directly relevant to the step. Do not force all types.
@@ -636,7 +639,7 @@ ${sopContexts}`;
 slackApp.event("message", async ({ event, client }) => {
   if (event.subtype === "bot_message") return;
   if (!event.thread_ts) return;
-  
+
   const botUserId = (await client.auth.test()).user_id;
   if (event.text?.includes(`<@${botUserId}>`)) {
     console.log("🔄 Bot mentioned — routing to app_mention handler, skipping follow-up.");
@@ -756,10 +759,25 @@ ${parseSteps(activeSOP.sop)
     .join("\n\n")}
 `;
 
-  const prompt = `You are a helpful support assistant for SOPs.
+  const prompt = `
+You are a helpful support assistant for SOPs.
 The user is asking a follow-up question about: "${activeSOP.title}".
 
-Use ONLY this SOP content. Answer strictly using the most relevant step.
+Use ONLY the steps and content inside the SOP below.
+
+Your response must follow these rules:
+
+1. Paraphrase it concisely in instructional style, second person ("you"), with clear action verbs.
+2. If the SOP step contains links, forms, tools, templates, or external resources:
+   - Include ONLY those that are directly relevant to the user's follow-up question.
+   - Format each as a Slack hyperlink: <URL|Human-Friendly Title>
+
+3. After explaining the step, include:
+   - 💡 Optional: A tip if it directly helps execute the step
+   - ⚠️ Optional: A caution if there is a risk or common mistake
+   - 📝 Optional: Notes only if they provide necessary context
+
+4. Do NOT summarize the whole SOP or mention unrelated steps.
 
 User question: ${query}
 
