@@ -592,10 +592,23 @@ ${sopContexts}`;
   // --- Extract chosen SOP from GPT response ---
   const chosenSOP = answer.match(/<[^|>]+\|([^>]+)>/)?.[1]?.trim() ?? null;
 
+  const relatedSOPs = topSops
+  .filter(s => s.title !== chosenSOP)
+  .slice(0, 2); // optional: max 2 related SOPs
+
+  let relatedText = "";
+  if (relatedSOPs.length > 0) {
+    relatedText = "\n\n*Related SOPs you might want to check:*\n";
+    relatedText += relatedSOPs
+      .map(s => `• <${s.link}|${s.title}>`)
+      .join("\n");
+  }
+
   const finalText =
-    answer.trim() === NO_SOP_RESPONSE
-      ? NO_SOP_RESPONSE
-      : `${answer}\n\n${statusNote}`;
+  answer.trim() === NO_SOP_RESPONSE
+    ? NO_SOP_RESPONSE
+    : `${answer}\n\n${statusNote}\n\n${relatedText}`;
+
 
   await client.chat.postMessage({
     channel: event.channel,
