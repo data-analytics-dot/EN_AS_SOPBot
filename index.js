@@ -19,7 +19,7 @@ const CODA_TABLE_ID_PHASES = process.env.CODA_TABLE_ID_PHASES;
 const PHASE_NAME_COLUMN_ID = process.env.PHASE_NAME_COLUMN_ID;
 const PHASE_START_COLUMN_ID = process.env.PHASE_START_COLUMN_ID;
 const PHASE_END_COLUMN_ID = process.env.PHASE_END_COLUMN_ID;
-let SLACK_BOT_USER_ID;
+const SLACK_BOT_USER_ID = "C0AC1PDAP6U";
 
 
 async function logSopUsageToCoda(client, payload) {
@@ -426,21 +426,6 @@ async function getSlackUserName(client, userId) {
   }
 }
 
-async function init() {
-  try {
-    const auth = await slackApp.client.auth.test();
-    SLACK_BOT_USER_ID = auth.user_id;
-    console.log(`🤖 Bot Initialized. ID: ${SLACK_BOT_USER_ID}`);
-    
-    await slackApp.start(process.env.PORT || 3000);
-    console.log("⚡️ Bolt app is running!");
-  } catch (error) {
-    console.error("Failed to start app or fetch Bot ID:", error);
-  }
-}
-
-init();
-
 // --- Handle app mention ---
 
 slackApp.event("app_mention", async ({ event, client }) => {
@@ -647,16 +632,12 @@ ${sopContexts}`;
 
 slackApp.event("message", async ({ event, client }) => {
   if (event.subtype === "bot_message") return;
-
-  const botMentionRegex = new RegExp(`<@${SLACK_BOT_USER_ID}>`);
-  if (botMentionRegex.test(event.text)) {
-    console.log("Mention detected in message event. Yielding to app_mention handler.");
-    return; 
-  }
-
-
   if (!event.thread_ts) return;
 
+
+  if (event.text && event.text.includes(`<@${SLACK_BOT_USER_ID}>`)) {
+    return; 
+  }
 
   const userId = event.user;
   const threadId = event.thread_ts;
