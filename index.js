@@ -607,7 +607,7 @@ ${sopContexts}`;
   const finalText =
   answer.trim() === NO_SOP_RESPONSE
     ? NO_SOP_RESPONSE
-    : `${answer}\n\n${statusNote}\n\n${relatedText}`;
+    : `${answer}\n\n${statusNote}${relatedText}`;
 
 
   await client.chat.postMessage({
