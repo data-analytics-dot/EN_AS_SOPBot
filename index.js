@@ -19,7 +19,23 @@ const CODA_TABLE_ID_PHASES = process.env.CODA_TABLE_ID_PHASES;
 const PHASE_NAME_COLUMN_ID = process.env.PHASE_NAME_COLUMN_ID;
 const PHASE_START_COLUMN_ID = process.env.PHASE_START_COLUMN_ID;
 const PHASE_END_COLUMN_ID = process.env.PHASE_END_COLUMN_ID;
-const SLACK_BOT_USER_ID = "C0AC1PDAP6U";
+
+let SLACK_BOT_USER_ID;
+
+async function init() {
+  try {
+    const auth = await slackApp.client.auth.test();
+    SLACK_BOT_USER_ID = auth.user_id;
+    console.log(`🤖 Bot Initialized. ID: ${SLACK_BOT_USER_ID}`);
+    
+    await slackApp.start(process.env.PORT || 3000);
+    console.log("⚡️ Bolt app is running!");
+  } catch (error) {
+    console.error("Failed to start app or fetch Bot ID:", error);
+  }
+}
+
+init();
 
 
 async function logSopUsageToCoda(client, payload) {
