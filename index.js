@@ -636,6 +636,13 @@ ${sopContexts}`;
 slackApp.event("message", async ({ event, client }) => {
   if (event.subtype === "bot_message") return;
   if (!event.thread_ts) return;
+  
+  const botUserId = (await client.auth.test()).user_id;
+  if (event.text?.includes(`<@${botUserId}>`)) {
+    console.log("🔄 Bot mentioned — routing to app_mention handler, skipping follow-up.");
+    return;
+  }
+
 
   const userId = event.user;
   const threadId = event.thread_ts;
