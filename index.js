@@ -226,6 +226,9 @@ const slackApp = new App({
   token: process.env.SLACK_BOT_TOKEN,
   socketMode: true,
   appToken: process.env.SLACK_APP_TOKEN,
+  socketModeOptions: {
+    pingTimeout: 20000, // Increase to 20 seconds to survive network flickers
+  }
 });
 
 const openai = new OpenAI({
@@ -431,12 +434,14 @@ async function getSlackUserName(client, userId) {
 
 async function init() {
   try {
+
+    await slackApp.start(process.env.PORT || 3000);
+
+
     const auth = await slackApp.client.auth.test();
     SLACK_BOT_USER_ID = auth.user_id;
     console.log(`🤖 Bot Initialized. ID: ${SLACK_BOT_USER_ID}`);
     
-    await slackApp.start(process.env.PORT || 3000);
-    console.log("⚡️ Bolt app is running!");
   } catch (error) {
     console.error("Failed to start app or fetch Bot ID:", error);
   }
@@ -653,10 +658,11 @@ slackApp.event("message", async ({ event, client }) => {
   if (!event.thread_ts) return;
 
 
-  if (event.text && event.text.includes(`<@${SLACK_BOT_USER_ID}>`)) {
+  const botMentionRegex = new RegExp(`<@${SLACK_BOT_USER_ID}>`);
+  if (botMentionRegex.test(event.text)) {
+    console.log("Mention detected, skipping message handler.");
     return; 
   }
-
   const userId = event.user;
   const threadId = event.thread_ts;
 
@@ -665,6 +671,11 @@ slackApp.event("message", async ({ event, client }) => {
   if (!ctx || Date.now() - ctx.timestamp > SESSION_TTL_MS) {
     resetUserContext(userId, threadId);
     ctx = getUserContext(userId, threadId); // refresh
+  }
+
+  if (!ctx || ctx.state !== "active" || !ctx.activeSOPs?.length) {
+    console.log("No active context found for follow-up. Ignoring.");
+    return;
   }
 
 
