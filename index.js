@@ -19,7 +19,7 @@ const CODA_TABLE_ID_PHASES = process.env.CODA_TABLE_ID_PHASES;
 const PHASE_NAME_COLUMN_ID = process.env.PHASE_NAME_COLUMN_ID;
 const PHASE_START_COLUMN_ID = process.env.PHASE_START_COLUMN_ID;
 const PHASE_END_COLUMN_ID = process.env.PHASE_END_COLUMN_ID;
-const SLACK_BOT_USER_ID = "C0AC1PDAP6U";
+let SLACK_BOT_USER_ID;
 
 
 async function logSopUsageToCoda(client, payload) {
@@ -426,6 +426,21 @@ async function getSlackUserName(client, userId) {
   }
 }
 
+async function init() {
+  try {
+    const auth = await slackApp.client.auth.test();
+    SLACK_BOT_USER_ID = auth.user_id;
+    console.log(`🤖 Bot Initialized. ID: ${SLACK_BOT_USER_ID}`);
+    
+    await slackApp.start(process.env.PORT || 3000);
+    console.log("⚡️ Bolt app is running!");
+  } catch (error) {
+    console.error("Failed to start app or fetch Bot ID:", error);
+  }
+}
+
+init();
+
 // --- Handle app mention ---
 
 slackApp.event("app_mention", async ({ event, client }) => {
@@ -433,13 +448,15 @@ slackApp.event("app_mention", async ({ event, client }) => {
   const query = event.text.replace(/<@[^>]+>/, "").trim();
   const thread_ts = event.thread_ts || event.ts;
 
+  resetUserContext(userId, thread_ts);
+
   // ⏳ Expire stale context for this user + thread
   let ctx = getUserContext(userId, thread_ts);
 
-  if (!ctx || Date.now() - ctx.timestamp > SESSION_TTL_MS) {
-    resetUserContext(userId, thread_ts);
-    ctx = getUserContext(userId, thread_ts); // refresh
-  }
+  // if (!ctx || Date.now() - ctx.timestamp > SESSION_TTL_MS) {
+  //   resetUserContext(userId, thread_ts);
+  //   ctx = getUserContext(userId, thread_ts); // refresh
+  // }
 
 
   // const session = userSessions[userId] || {};
@@ -759,6 +776,7 @@ ${parseSteps(activeSOP.sop)
 The user is asking a follow-up question about: "${activeSOP.title}".
 
 Use ONLY this SOP content. Answer strictly using the most relevant step.
+If the SOP contains links, you MUST format them using Slack's syntax: <URL|Text>.
 
 User question: ${query}
 
