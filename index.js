@@ -615,10 +615,8 @@ ${sopContexts}`;
     return;
   }
 
-  const chosenSopIndex = topSops.findIndex(s => s.title === chosenSOP);
-
   // Re-order topSops so the chosen one is first
- const validatedSOPObject = topSops.find(s => s.title === chosenSOP);
+  const validatedSOPObject = topSops.find(s => s.title === chosenSOP);
 
   // If GPT chose it, that is now our ONLY active SOP for this thread
   const finalLockedSOPs = validatedSOPObject ? [validatedSOPObject] : [topSops[0]];
@@ -882,6 +880,15 @@ async function logHelpfulFeedback(link, feedbackValue) {
   try {
     const url = `https://coda.io/apis/v1/docs/${CODA_DOC_ID_LOGS}/tables/grid-_srsDavruy/rows`;
 
+    const readableTimestamp = new Date().toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+    });
+
     const res = await fetch(url, {
       method: "POST",
       headers: {
@@ -893,7 +900,8 @@ async function logHelpfulFeedback(link, feedbackValue) {
           {
             cells: [
               { column: "c-ZbMVbrSEQI", value: link },         // Link column
-              { column: "c-xbu_Ws9t5n", value: feedbackValue } // Response column
+              { column: "c-xbu_Ws9t5n", value: feedbackValue }, // Response column
+              { column: "c-_IiYRmxicr", value: readableTimestamp }
             ]
           }
         ]
