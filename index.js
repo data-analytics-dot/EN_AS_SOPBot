@@ -632,12 +632,16 @@ ${sopContexts}`;
 
 slackApp.event("message", async ({ event, client }) => {
   if (event.subtype === "bot_message") return;
-  if (!event.thread_ts) return;
 
-
-  if (event.text && event.text.includes(`<@${SLACK_BOT_USER_ID}>`)) {
+  const botMentionRegex = new RegExp(`<@${SLACK_BOT_USER_ID}>`);
+  if (botMentionRegex.test(event.text)) {
+    console.log("Mention detected in message event. Yielding to app_mention handler.");
     return; 
   }
+
+
+  if (!event.thread_ts) return;
+
 
   const userId = event.user;
   const threadId = event.thread_ts;
