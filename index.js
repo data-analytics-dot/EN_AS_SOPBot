@@ -19,6 +19,7 @@ const CODA_TABLE_ID_PHASES = process.env.CODA_TABLE_ID_PHASES;
 const PHASE_NAME_COLUMN_ID = process.env.PHASE_NAME_COLUMN_ID;
 const PHASE_START_COLUMN_ID = process.env.PHASE_START_COLUMN_ID;
 const PHASE_END_COLUMN_ID = process.env.PHASE_END_COLUMN_ID;
+const SLACK_BOT_USER_ID = "C0AC1PDAP6U";
 
 
 async function logSopUsageToCoda(client, payload) {
@@ -476,14 +477,7 @@ slackApp.event("app_mention", async ({ event, client }) => {
   topSops = filterRelevantSOPs(allSops, query);
   // 🔒 FIX #1: thread-level SOP lock
   
-  // if (ctx?.activeSOPs?.length) {
-  //   console.log("🔒 Follow-up detected — using locked SOP");
-  //   topSops = ctx.activeSOPs;
-  //   isFollowUp = true;
-  // } else {
-  //   const sops = await fetchSOPs();
-  //   topSops = filterRelevantSOPs(sops, query);
-  // }
+ 
 
   if (topSops.length === 0) {
     await client.chat.postMessage({
@@ -640,7 +634,8 @@ slackApp.event("message", async ({ event, client }) => {
   if (event.subtype === "bot_message") return;
   if (!event.thread_ts) return;
 
-  if (event.text && event.text.includes(`<@${process.env.SLACK_BOT_USER_ID}>`)) {
+
+  if (event.text && event.text.includes(`<@${SLACK_BOT_USER_ID}>`)) {
     return; 
   }
 
