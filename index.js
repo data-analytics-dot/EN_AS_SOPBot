@@ -448,15 +448,13 @@ slackApp.event("app_mention", async ({ event, client }) => {
   const query = event.text.replace(/<@[^>]+>/, "").trim();
   const thread_ts = event.thread_ts || event.ts;
 
-  resetUserContext(userId, thread_ts);
-
   // ⏳ Expire stale context for this user + thread
   let ctx = getUserContext(userId, thread_ts);
 
-  // if (!ctx || Date.now() - ctx.timestamp > SESSION_TTL_MS) {
-  //   resetUserContext(userId, thread_ts);
-  //   ctx = getUserContext(userId, thread_ts); // refresh
-  // }
+  if (!ctx || Date.now() - ctx.timestamp > SESSION_TTL_MS) {
+    resetUserContext(userId, thread_ts);
+    ctx = getUserContext(userId, thread_ts); // refresh
+  }
 
 
   // const session = userSessions[userId] || {};
@@ -776,7 +774,6 @@ ${parseSteps(activeSOP.sop)
 The user is asking a follow-up question about: "${activeSOP.title}".
 
 Use ONLY this SOP content. Answer strictly using the most relevant step.
-If the SOP contains links, you MUST format them using Slack's syntax: <URL|Text>.
 
 User question: ${query}
 
