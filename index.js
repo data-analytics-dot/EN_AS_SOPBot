@@ -22,20 +22,7 @@ const PHASE_END_COLUMN_ID = process.env.PHASE_END_COLUMN_ID;
 
 let SLACK_BOT_USER_ID;
 
-async function init() {
-  try {
-    const auth = await slackApp.client.auth.test();
-    SLACK_BOT_USER_ID = auth.user_id;
-    console.log(`🤖 Bot Initialized. ID: ${SLACK_BOT_USER_ID}`);
-    
-    await slackApp.start(process.env.PORT || 3000);
-    console.log("⚡️ Bolt app is running!");
-  } catch (error) {
-    console.error("Failed to start app or fetch Bot ID:", error);
-  }
-}
 
-init();
 
 
 async function logSopUsageToCoda(client, payload) {
@@ -441,6 +428,21 @@ async function getSlackUserName(client, userId) {
     return userId;
   }
 }
+
+async function init() {
+  try {
+    const auth = await slackApp.client.auth.test();
+    SLACK_BOT_USER_ID = auth.user_id;
+    console.log(`🤖 Bot Initialized. ID: ${SLACK_BOT_USER_ID}`);
+    
+    await slackApp.start(process.env.PORT || 3000);
+    console.log("⚡️ Bolt app is running!");
+  } catch (error) {
+    console.error("Failed to start app or fetch Bot ID:", error);
+  }
+}
+
+init();
 
 // --- Handle app mention ---
 
