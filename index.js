@@ -598,7 +598,7 @@ ${sopContexts}`;
 
   let relatedText = "";
   if (relatedSOPs.length > 0) {
-    relatedText = "\n\n*Related SOPs you might want to check:*\n";
+    relatedText = "\n\n*SOPs you might want to check:*\n";
     relatedText += relatedSOPs
       .map(s => `• <${s.link}|${s.title}>`)
       .join("\n");
