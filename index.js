@@ -698,10 +698,11 @@ slackApp.event("app_mention", async ({ event, client }) => {
 Task: Identify if the provided SOPs DIRECTLY answer the user's question.
 
 Decision Logic:
-1. THE "EXACT MATCH" RULE: Only use [SINGLE] if ONE SOP is the definitive authority on the user's specific question. 
-2. THE "AMBIGUITY" RULE: If the user's question is broad (e.g., "How to log in") and multiple SOPs contain login procedures, or if you are choosing between two similar sounding SOPs, you MUST respond with [MULTIPLE].
-3. THE "SUB-STEP" RULE: If an SOP mentions the user's keywords but the SOP is actually about a different primary task (e.g., Bitwarden is mentioned in a ChatGPT SOP), do NOT use [SINGLE]. Use [MULTIPLE] to ask if they meant that specific tool, or [NONE] if it's completely unrelated.
-4. THE "NO MATCH" RULE: Only respond with "I couldn’t find an SOP..." if the provided SOPs have 0% relevance to the user's query.
+1. THE "EXACT MATCH" RULE: Only use [SINGLE] if ONE SOP title and content are the definitive, direct answer to the user's question.
+2. THE "CLARIFICATION" RULE: If there is ANY overlap between the user's question and the provided SOPs (even if it's just a tool mention or a similar process), but you are not 100% sure it's the exact answer, you MUST respond with [MULTIPLE].
+3. THE "NO GUESSING" RULE: It is better to clarify than to give a wrong answer. If you see multiple Bitwarden-related SOPs, clarify.
+4. THE "NO MATCH" RULE: Only respond with [NONE] if the SOPs are 100% unrelated (e.g., asking about food when the SOPs are about software).
+
 
 Response Rules for [SINGLE]:
 First, identify the SOP that best answers the question.
@@ -731,7 +732,7 @@ ${sopContexts}`;
   let gptResponse = gptRes.choices[0].message?.content ?? "I couldn’t find an SOP that matches your question.";
 
   // --- 🔄 MULTIPLE MATCHES ---
-    if (gptResponse.includes("[MULTIPLE]")) {
+   if (gptResponse.includes("[MULTIPLE]") || (!gptResponse.includes("[SINGLE]") && topSops.length > 0)) {
     setUserContext(userId, thread_ts, { 
       state: "awaiting_disambiguation", 
       sopCandidates: topSops, 
@@ -743,7 +744,7 @@ ${sopContexts}`;
     await client.chat.postMessage({ 
       channel: event.channel, 
       thread_ts, 
-      text: `I found a few things related to that. Are you asking about *${topSops[0].title}*?` 
+      text: `I'm not 100% sure, but I found something that might help. Are you asking about *${topSops[0].title}*?` 
     });
     return;
   }
