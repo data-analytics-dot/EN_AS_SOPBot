@@ -784,6 +784,8 @@ slackApp.event("message", async ({ event, client }) => {
         lastStepNumber: 1,
         activeSOPs: [confirmedSOP],
         timestamp: Date.now(),
+        channel: event.channel,
+        originalQuery: ctx.originalQuery || event.text
       });
 
       await client.chat.postMessage({
@@ -850,7 +852,7 @@ slackApp.event("message", async ({ event, client }) => {
 
   console.log("🔥 Follow-up in thread detected:", query);
 
-  const rowId = await answerFollowUp(userId, threadId, confirmedSOP, originalQuery, client, ctx);
+  const rowId = await answerFollowUp(userId, threadId, confirmedSOP, ctx.originalQuery || event.text, client, ctx);
 
   setUserContext(userId, threadId, {
   ...ctx,
