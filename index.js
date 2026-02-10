@@ -694,12 +694,16 @@ slackApp.event("app_mention", async ({ event, client }) => {
   }).join("\n\n---\n\n");
 
   const prompt = `You are a helpful support assistant. 
-Task: Determine if the user's question is answered by the provided SOPs.
 
-Rules:
-1. If an SOP covers the topic, respond with [SINGLE] followed by a conversational answer.
-2. If multiple SOPs are equally relevant, respond with [MULTIPLE].
-3. If totally unrelated, respond: "I couldn’t find an SOP that matches your question."
+Task: Compare the provided SOPs to see if the user's question has a unique answer or requires clarification.
+
+Decision Logic:
+1. RELEVANCE SCAN: Scan all 5 provided SOPs. Identify every SOP that could reasonably answer the user's specific query.
+2. COUNT-BASED DECISION:
+   - If EXACTLY ONE SOP is relevant: Respond with [SINGLE] and provide the answer.
+   - If TWO OR MORE SOPs are relevant (even if they seem to cover the same intent or have similar wording): Respond with [MULTIPLE]. You must clarify whenever there is a choice to be made.
+   - If ZERO SOPs are relevant: Respond with "I couldn’t find an SOP that matches your question."
+3. NO GUESSING: Even if one SOP looks "better" than the others, if a second SOP also contains a valid procedure for the query, you MUST choose [MULTIPLE].
 
 Response Rules for [SINGLE]:
 1. First, identify the SOP that best answers the question.
