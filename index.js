@@ -909,7 +909,7 @@ ${sopContexts}
   const answer = gptRes.choices[0].message?.content ?? "I couldn’t find an SOP that matches your question.";
 
   await client.chat.postMessage({
-    channel: ctx.channel || userId, // fallback if ctx.channel exists
+    channel: channel, // fallback if ctx.channel exists
     thread_ts: threadId,
     text: answer,
   });
