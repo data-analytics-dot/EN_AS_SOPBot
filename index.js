@@ -788,12 +788,6 @@ slackApp.event("message", async ({ event, client }) => {
         originalQuery: ctx.originalQuery || event.text
       });
 
-      await client.chat.postMessage({
-        channel: event.channel,
-        thread_ts: threadId,
-        text: `✅ Great! Let's proceed with *${confirmedSOP.title}*.`,
-      });
-
       // 🔥 Answer the original question automatically
       const originalQuery = ctx.originalQuery || event.text;
       await answerFollowUp(userId, threadId, confirmedSOP, originalQuery, client, event.channel);
@@ -888,9 +882,16 @@ Use ONLY the steps and content inside the SOP below.
 
 Your response must follow these rules:
 1. Paraphrase concisely in instructional style, second person ("you"), with clear action verbs.
-2. Include only relevant links/forms/templates/tools as Slack hyperlinks.
-3. 💡 Optional tip, ⚠️ Optional caution, 📝 Optional notes if helpful.
-4. Do NOT summarize unrelated steps.
+2. Include only relevant links/forms/templates/tools as Slack hyperlinks <SOP URL|SOP Title>.
+3. After explaining the step, include any relevant follow-through guidance:
+   - 💡 Tips that help execute the step more efficiently or correctly
+   - ⚠️ Warnings or cautions if there are common mistakes, risks, or edge cases
+   - 📝 Notes for important context or clarifications
+   - 🔢 Include any computations, formulas, or numeric examples exactly as stated in the SOP step if relevant to the question
+   - 📎 Include any forms, templates, links, or tools mentioned in the SOP that are relevant to the question, formatted as Slack hyperlinks: <URL|Title>
+4. Formatting rules:
+   - Insert a blank line between different insight types
+5. Do NOT summarize unrelated steps.
 
 User question: ${query}
 
