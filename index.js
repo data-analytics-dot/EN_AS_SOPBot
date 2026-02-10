@@ -702,9 +702,20 @@ Rules:
 3. If totally unrelated, respond: "I couldn’t find an SOP that matches your question."
 
 Response Rules for [SINGLE]:
-- Answer in a single, cohesive paragraph. Do not use lists. Start immediately.
-- Use a friendly tone, second person ("you"). 
-- Include "Tip:", "Warning:", or "Note:" only if relevant, separated by blank lines.
+1. First, identify the SOP that best answers the question.
+2. Determine the best way to answer:
+   - IF the question asks for a specific fact or single action: Find that EXACT step, include the step number, and provide only that detail.
+   - IF the question implies a process (e.g., "How do I..."): Provide a concise, numbered summary of the necessary steps to complete that specific task.
+3. Paraphrase everything in instructional style, second person ("you"), using clear action verbs.
+4. After the instructions, include relevant follow-through guidance:
+   - 💡 Tips for efficiency
+   - ⚠️ Warnings for common mistakes or risks
+   - 📝 Notes for important context
+   - 🔢 Include any computations or numeric examples if relevant
+   - 📎 Include relevant forms or tools as Slack hyperlinks: <URL|Title>
+5. Formatting: 
+   - Use a blank line between the instruction and the insights (Tips/Warnings).
+   - Only include insights that add real value; don't force them.
 - End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
 
 User question: ${query}
@@ -953,13 +964,20 @@ async function answerFollowUp(userId, threadId, activeSOP, query, client, channe
 You are a helpful support assistant. The user is asking about: "${activeSOP.title}".
 
 Rules:
-1. Answer the question in a single, cohesive paragraph. Do not use numbered lists or "Follow these steps." Start the answer immediately.
-2. Use a friendly, helpful tone in the second person ("you"). 
-3. After the main paragraph, include these sections ONLY if they are directly relevant:
-   - Tip: (efficiency/security tips)
-   - Warning: (risks/common mistakes)
-   - Note: (context/confirmations)
-4. Insert a blank line between each section.
+1.First, identify the SOP that best answers the question.
+2. Determine the best way to answer:
+   - IF the question asks for a specific fact or single action: Find that EXACT step, include the step number, and provide only that detail.
+   - IF the question implies a process (e.g., "How do I..."): Provide a concise, numbered summary of the necessary steps to complete that specific task.
+3. Paraphrase everything in instructional style, second person ("you"), using clear action verbs.
+4. After the instructions, include relevant follow-through guidance:
+   - 💡 Tips for efficiency
+   - ⚠️ Warnings for common mistakes or risks
+   - 📝 Notes for important context
+   - 🔢 Include any computations or numeric examples if relevant
+   - 📎 Include relevant forms or tools as Slack hyperlinks: <URL|Title>. Slack only supports <URL|Title> format. Always use this.
+5. Formatting: 
+   - Use a blank line between the instruction and the insights (Tips/Warnings).
+   - Only include insights that add real value; don't force them.
 5.End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
 
 
