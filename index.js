@@ -850,10 +850,17 @@ slackApp.event("message", async ({ event, client }) => {
 
   console.log("🔥 Follow-up in thread detected:", query);
 
-  await answerFollowUp(userId, threadId, activeSOP, query, client);
+  const rowId = await answerFollowUp(userId, threadId, confirmedSOP, originalQuery, client, ctx);
+
+  setUserContext(userId, threadId, {
+  ...ctx,
+  lastRowId: rowId,
+  originalQuery: null
 });
 
-async function answerFollowUp(userId, threadId, activeSOP, query, client) {
+});
+
+async function answerFollowUp(userId, threadId, activeSOP, query, client, ctx) {
   const sopContexts = `
 Title: ${activeSOP.title}
 Link: <${activeSOP.link}|${activeSOP.title}>
@@ -888,15 +895,15 @@ ${sopContexts}
   const answer = gptRes.choices[0].message?.content ?? "I couldn’t find an SOP that matches your question.";
 
   await client.chat.postMessage({
-    channel: userId,
+    channel: ctx.channel || userId, // fallback if ctx.channel exists
     thread_ts: threadId,
     text: answer,
   });
 
   // Log usage to Coda or database as needed
-  await logSopUsageToCoda(client, {
+  const rowId = await logSopUsageToCoda(client, {
     userId,
-    channel: userId,
+    channel: ctx.channel || userId,
     threadTs: threadId,
     question: query,
     sopTitle: activeSOP.title,
@@ -906,10 +913,7 @@ ${sopContexts}
     userName: null
   });
 
-  setUserContext(userId, threadId, { 
-    ...ctx,           
-    lastRowId: rowId  
-  });
+  return rowId;
 }
 
 async function pickBestLiveSOP(query, deprecatedSOP, liveSOPs) {
