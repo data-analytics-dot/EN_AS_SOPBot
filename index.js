@@ -681,7 +681,7 @@ slackApp.event("app_mention", async ({ event, client }) => {
   // Fetch SOPs
   const sops = await fetchSOPs();
   const liveSops = sops.filter(s => !(s.status || "").toLowerCase().includes("deprecated"));
-  const topSops = filterRelevantSOPs(liveSops, query).slice(0, 3);
+  const topSops = filterRelevantSOPs(liveSops, query).slice(0, 5);
 
   if (topSops.length === 0) {
     await client.chat.postMessage({ channel: event.channel, thread_ts, text: "I couldn’t find an SOP that matches your question." });
@@ -695,30 +695,18 @@ slackApp.event("app_mention", async ({ event, client }) => {
 
   const prompt = `You are a helpful support assistant. 
 
-Task: Compare the provided SOPs to see if the user's question has a unique answer or requires clarification.
+Task: Identify if the provided SOPs DIRECTLY answer the user's question.
 
 Decision Logic:
-1. RELEVANCE SCAN: Scan all 5 provided SOPs. Identify every SOP that could reasonably answer the user's specific query.
-2. COUNT-BASED DECISION:
-   - If EXACTLY ONE SOP is relevant: Respond with [SINGLE] and provide the answer.
-   - If TWO OR MORE SOPs are relevant (even if they seem to cover the same intent or have similar wording): Respond with [MULTIPLE]. You must clarify whenever there is a choice to be made.
-   - If ZERO SOPs are relevant: Respond with "I couldn’t find an SOP that matches your question."
-3. NO GUESSING: Even if one SOP looks "better" than the others, if a second SOP also contains a valid procedure for the query, you MUST choose [MULTIPLE].
+1. THE "EXACT MATCH" RULE: Only use [SINGLE] if ONE SOP is the definitive authority on the user's specific question. 
+2. THE "AMBIGUITY" RULE: If the user's question is broad (e.g., "How to log in") and multiple SOPs contain login procedures, or if you are choosing between two similar sounding SOPs, you MUST respond with [MULTIPLE].
+3. THE "SUB-STEP" RULE: If an SOP mentions the user's keywords but the SOP is actually about a different primary task (e.g., Bitwarden is mentioned in a ChatGPT SOP), do NOT use [SINGLE]. Use [MULTIPLE] to ask if they meant that specific tool, or [NONE] if it's completely unrelated.
+4. THE "NO MATCH" RULE: Only respond with "I couldn’t find an SOP..." if the provided SOPs have 0% relevance to the user's query.
 
 Response Rules for [SINGLE]:
-1. First, identify the SOP that best answers the question.
-2. Answer the question in a conversational narrative style using second person ("you").
-3. Only include information from the most relevant step(s) in that SOP. Do NOT include unrelated steps, summaries, or introductions.
-4. After the instructions, include relevant follow-through guidance:
-   - 💡 Tips for efficiency
-   - ⚠️ Warnings for common mistakes or risks
-   - 📝 Notes for important context
-   - 🔢 Include any computations or numeric examples if relevant
-   - 📎 Include relevant forms or tools as Slack hyperlinks: <URL|Title>
-5. Formatting: 
-   - Use a blank line between the instruction and the insights (Tips/Warnings).
-   - Only include insights that add real value; don't force them.
-6. End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
+- Answer conversational narrative style.
+- Only include the specific action requested.
+- End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
 
 User question: ${query}
 SOPs:
