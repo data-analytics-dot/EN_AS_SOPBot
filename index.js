@@ -595,6 +595,7 @@ ${sopContexts}`;
       state: "awaiting_disambiguation",
       sopCandidates: topSops,
       sopIndex: 0,
+      originalQuery: query,
       timestamp: Date.now()
     });
 
@@ -776,7 +777,8 @@ slackApp.event("message", async ({ event, client }) => {
     if (userAnswer === "yes") {
       // User confirmed the SOP
       const confirmedSOP = ctx.sopCandidates[nextIndex];
-      setUserContext(userId, threadId, {
+      setUserContext(userId, thread_ts, {
+        ...ctx,
         state: "active",
         lastSOP: confirmedSOP.title,
         lastStepNumber: 1,
@@ -788,7 +790,7 @@ slackApp.event("message", async ({ event, client }) => {
         thread_ts: threadId,
         text: `✅ Great! Let's proceed with *${confirmedSOP.title}*.`,
       });
-      return;
+      
     } else if (userAnswer === "no") {
       // Try next SOP candidate
       nextIndex++;
