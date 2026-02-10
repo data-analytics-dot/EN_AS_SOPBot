@@ -777,7 +777,7 @@ slackApp.event("message", async ({ event, client }) => {
     if (userAnswer === "yes") {
       // User confirmed the SOP
       const confirmedSOP = ctx.sopCandidates[nextIndex];
-      setUserContext(userId, thread_ts, {
+      setUserContext(userId, threadId, {
         ...ctx,
         state: "active",
         lastSOP: confirmedSOP.title,
