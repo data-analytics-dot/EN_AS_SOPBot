@@ -395,7 +395,7 @@ function filterRelevantSOPs(sops, query) {
 
 
 
-  const top = filtered.length > 0 ? filtered.slice(0, 3) : sorted.slice(0, 2);
+  const top = filtered.length > 0 ? filtered.slice(0, 5) : sorted.slice(0, 2);
   if (filtered.length === 0) {
     console.log("⚠️ No relevant SOP found");
     return [];
@@ -407,7 +407,7 @@ function filterRelevantSOPs(sops, query) {
   }
 
   console.log(`✅ Top match: "${filtered[0].title}" (score ${filtered[0].score})`);
-  return filtered.slice(0, 3);
+  return filtered.slice(0, 5);
 
 }
 
@@ -441,16 +441,8 @@ slackApp.event("app_mention", async ({ event, client }) => {
     ctx = getUserContext(userId, thread_ts); // refresh
   }
 
-
-  // const session = userSessions[userId] || {};
   console.log(`User asked: ${query}`);
 
-  // --- Retrieve or initialize user context for this thread ---
-  //const context = getUserContext(userId, thread_ts);
-
-  // setUserContext(userId, thread_ts, {
-  //   state: "active",
-  // });
 
   const lowerText = query.toLowerCase();
 
@@ -554,6 +546,11 @@ slackApp.event("app_mention", async ({ event, client }) => {
   // --- GPT Prompt ---
   const prompt = `You are a helpful support assistant for SOPs. Use the SOPs below as your knowledge base.
 
+  Important: 
+- If TWO or more SOPs are relevant to the user's question, do NOT answer immediately. Instead, identify the relevant SOPs and ask the user for clarification, starting with the first SOP's title.  
+- If exactly ONE SOP is clearly relevant, proceed to answer using that SOP and follow the Rules below.  
+- If no SOP is relevant, respond: "I couldn’t find an SOP that matches your question."
+
 ${followUpNote}
 Rules:
 1. First, you MUST choose ONE SOP that best answers the user question.
@@ -589,9 +586,29 @@ ${sopContexts}`;
   const NO_SOP_RESPONSE = "I couldn’t find an SOP that matches your question.";
   const isNoSop = answer.trim() === NO_SOP_RESPONSE;
 
-  // --- Extract chosen SOP from GPT response ---
-  const chosenSOP = answer.match(/<[^|>]+\|([^>]+)>/)?.[1]?.trim() ?? null;
+   if (answer.toLowerCase().includes("are you perhaps asking about") || topSops.length > 1) {
+    // Ask user for clarification
+    const first = topSops[0];
+    const firstTitle = first.steps?.[0]?.step ?? first.title;
 
+    setUserContext(userId, thread_ts, {
+      state: "awaiting_disambiguation",
+      sopCandidates: topSops,
+      sopIndex: 0,
+      timestamp: Date.now()
+    });
+
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      text: `Are you perhaps asking about *${firstTitle}*?`
+    });
+    return; // STOP here — wait for user YES/NO
+  }
+
+  // --- Extract chosen SOP from GPT response ---
+  const chosenSOP = answer.match(/<[^|>]+\|([^>]+)>/)?.[1]?.trim() ?? topSops[0].title;
+  
   const relatedSOPs = topSops
   .filter(s => s.title !== chosenSOP)
   .slice(0, 2); // optional: max 2 related SOPs
@@ -636,7 +653,7 @@ ${sopContexts}`;
   const validatedSOPObject = topSops.find(s => s.title === chosenSOP);
 
   // If GPT chose it, that is now our ONLY active SOP for this thread
-  const finalLockedSOPs = validatedSOPObject ? [validatedSOPObject] : [topSops[0]];
+  const finalLockedSOPs =  topSops.find(s => s.title === chosenSOP) ? [topSops.find(s => s.title === chosenSOP)] : [topSops[0]];
 
   setUserContext(userId, thread_ts, {
     ...ctx,
@@ -752,6 +769,64 @@ slackApp.event("message", async ({ event, client }) => {
     return;
   }
 
+  if (ctx.state === "awaiting_disambiguation" && ctx.sopCandidates?.length) {
+    const userAnswer = lowerText;
+    let nextIndex = ctx.sopIndex || 0;
+
+    if (userAnswer === "yes") {
+      // User confirmed the SOP
+      const confirmedSOP = ctx.sopCandidates[nextIndex];
+      setUserContext(userId, threadId, {
+        state: "active",
+        lastSOP: confirmedSOP.title,
+        lastStepNumber: 1,
+        activeSOPs: [confirmedSOP],
+        timestamp: Date.now(),
+      });
+      await client.chat.postMessage({
+        channel: event.channel,
+        thread_ts: threadId,
+        text: `✅ Great! Let's proceed with *${confirmedSOP.title}*.`,
+      });
+      return;
+    } else if (userAnswer === "no") {
+      // Try next SOP candidate
+      nextIndex++;
+      if (nextIndex < ctx.sopCandidates.length) {
+        const nextSOP = ctx.sopCandidates[nextIndex];
+        setUserContext(userId, threadId, {
+          ...ctx,
+          sopIndex: nextIndex,
+          timestamp: Date.now(),
+        });
+        await client.chat.postMessage({
+          channel: event.channel,
+          thread_ts: threadId,
+          text: `Are you perhaps asking about *${nextSOP.title}*?`,
+        });
+        return;
+      } else {
+        // No more candidates
+        resetUserContext(userId, threadId);
+        await client.chat.postMessage({
+          channel: event.channel,
+          thread_ts: threadId,
+          text: "❌ I couldn’t find the correct SOP. Please try asking differently.",
+        });
+        return;
+      }
+    } else {
+      // User reply not recognized
+      await client.chat.postMessage({
+        channel: event.channel,
+        thread_ts: threadId,
+        text: "Please answer with *Yes* or *No* so I can choose the correct SOP.",
+      });
+      return;
+    }
+  }
+
+
 
     // 🚫 Ignore unless explicitly active
   if (ctx.state !== "active") return;
@@ -804,8 +879,10 @@ ${sopContexts}
     temperature: 0.2,
   });
 
-  const answer = gptRes.choices[0].message?.content ?? "No answer.";
+  const answer = (gptRes.choices[0].message?.content ?? NO_SOP_RESPONSE).trim();
+
   const NO_SOP_RESPONSE = "I couldn’t find an SOP that matches your question.";
+  const isNoSop = answer.trim() === NO_SOP_RESPONSE;
 
   await client.chat.postMessage({
     channel: event.channel,
@@ -818,7 +895,7 @@ ${sopContexts}
     channel: event.channel,
     threadTs: threadId,
     question: query,
-    sopTitle: answer === NO_SOP_RESPONSE ? null : activeSOP.title,
+    sopTitle: isNoSop ? null : activeSOP.title,
     stepFound: answer !== NO_SOP_RESPONSE,
     status: answer === NO_SOP_RESPONSE ? "No SOP" : "Follow-up Answer",
     gptResponse: answer,
