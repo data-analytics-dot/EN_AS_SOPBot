@@ -704,9 +704,19 @@ Decision Logic:
 4. THE "NO MATCH" RULE: Only respond with "I couldn’t find an SOP..." if the provided SOPs have 0% relevance to the user's query.
 
 Response Rules for [SINGLE]:
-- Answer conversational narrative style.
-- Only include the specific action requested.
-- End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
+First, identify the SOP that best answers the question.
+2. Answer the question in a conversational narrative style using second person ("you").
+3. Answer ONLY from the most relevant step. Do NOT include unrelated steps, summaries, or introductions.
+4. After the instructions, include relevant follow-through guidance:
+   - 💡 Tips for efficiency
+   - ⚠️ Warnings for common mistakes or risks
+   - 📝 Notes for important context
+   - 🔢 Include any computations or numeric examples if relevant
+   - 📎 Include relevant forms or tools as Slack hyperlinks: <URL|Title>
+5. Formatting: 
+   - Use a blank line between the instruction and the insights (Tips/Warnings).
+   - Only include insights that add real value; don't force them.
+6. End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
 
 User question: ${query}
 SOPs:
@@ -715,41 +725,65 @@ ${sopContexts}`;
   const gptRes = await openai.chat.completions.create({
     model: "gpt-4",
     messages: [{ role: "user", content: prompt }],
-    temperature: 0.1,
+    temperature: 0,
   });
 
   let gptResponse = gptRes.choices[0].message?.content ?? "I couldn’t find an SOP that matches your question.";
 
   // --- 🔄 MULTIPLE MATCHES ---
-  if (gptResponse.includes("[MULTIPLE]")) {
-    setUserContext(userId, thread_ts, { state: "awaiting_disambiguation", sopCandidates: topSops, sopIndex: 0, originalQuery: query, timestamp: Date.now() });
-    await client.chat.postMessage({ channel: event.channel, thread_ts, text: `It looks like there are a few possible answers. Are you perhaps asking about *${topSops[0].title}*?` });
+    if (gptResponse.includes("[MULTIPLE]")) {
+    setUserContext(userId, thread_ts, { 
+      state: "awaiting_disambiguation", 
+      sopCandidates: topSops, 
+      sopIndex: 0, 
+      originalQuery: query, 
+      timestamp: Date.now() 
+    });
+    
+    await client.chat.postMessage({ 
+      channel: event.channel, 
+      thread_ts, 
+      text: `I found a few things related to that. Are you asking about *${topSops[0].title}*?` 
+    });
     return;
   }
 
-  // --- ✅ SINGLE MATCH ---
+  // --- 2. ANSWER IF CERTAIN ---
   if (gptResponse.includes("[SINGLE]")) {
     let cleanAnswer = gptResponse.replace("[SINGLE]", "").trim();
     
-    // --- 🔥 LINK & BOLD SAFETY NET ---
+    // Format Cleaning
     cleanAnswer = cleanAnswer.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<$2|$1>');
     cleanAnswer = cleanAnswer.replace(/\*\*(.*?)\*\*/g, '*$1*');
 
-    const chosenSOPTitle = cleanAnswer.match(/<[^|>]+\|([^>]+)>/)?.[1]?.trim() || topSops[0].title;
-    const validatedSOP = topSops.find(s => s.title === chosenSOPTitle) || topSops[0];
+    // Link Extraction & Validation
+    const chosenTitle = cleanAnswer.match(/<[^|>]+\|([^>]+)>/)?.[1]?.trim() || topSops[0].title;
+    const finalSOP = topSops.find(s => s.title === chosenTitle) || topSops[0];
 
-    // Force link if GPT missed it
-    if (!cleanAnswer.includes('<' + validatedSOP.link)) {
-        cleanAnswer += `\n\nFor more details and related links: <${validatedSOP.link}|${validatedSOP.title}>`;
+    // Hard-code the footer to prevent GPT link errors
+    if (cleanAnswer.includes("For more details")) {
+      cleanAnswer = cleanAnswer.split("For more details")[0].trim();
     }
+    cleanAnswer += `\n\n*For more details and related links:* <${finalSOP.link}|${finalSOP.title}>`;
 
     await client.chat.postMessage({ channel: event.channel, thread_ts, text: cleanAnswer });
-
-    setUserContext(userId, thread_ts, { state: "active", lastSOP: validatedSOP.title, activeSOPs: [validatedSOP], timestamp: Date.now() });
+    
+    setUserContext(userId, thread_ts, { 
+      state: "active", 
+      lastSOP: finalSOP.title, 
+      activeSOPs: [finalSOP], 
+      timestamp: Date.now() 
+    });
     return;
   }
 
-  await client.chat.postMessage({ channel: event.channel, thread_ts, text: gptResponse });
+    await client.chat.postMessage({ 
+      channel: event.channel, 
+      thread_ts, 
+      text: "I couldn’t find an SOP that directly matches your question. Could you try being a bit more specific?" 
+    });
+
+  
 });
 
 slackApp.event("message", async ({ event, client }) => {
