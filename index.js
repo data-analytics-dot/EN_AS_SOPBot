@@ -852,7 +852,17 @@ slackApp.event("message", async ({ event, client }) => {
 
   console.log("🔥 Follow-up in thread detected:", query);
 
-  const rowId = await answerFollowUp(userId, threadId, confirmedSOP, ctx.originalQuery || event.text, client, ctx);
+ // Instead of confirmedSOP (which might be undefined), use activeSOP
+  const rowId = await answerFollowUp(
+    userId,
+    threadId,
+    activeSOP,               // ✅ always defined
+    ctx.originalQuery || event.text,
+    client,
+    { channel: event.channel } // ✅ pass channel explicitly
+  );
+
+
 
   setUserContext(userId, threadId, {
   ...ctx,
@@ -863,6 +873,8 @@ slackApp.event("message", async ({ event, client }) => {
 });
 
 async function answerFollowUp(userId, threadId, activeSOP, query, client, ctx) {
+  const channel = opts.channel || userId;
+
   const sopContexts = `
 Title: ${activeSOP.title}
 Link: <${activeSOP.link}|${activeSOP.title}>
@@ -905,7 +917,7 @@ ${sopContexts}
   // Log usage to Coda or database as needed
   const rowId = await logSopUsageToCoda(client, {
     userId,
-    channel: ctx.channel || userId,
+    channel,
     threadTs: threadId,
     question: query,
     sopTitle: activeSOP.title,
