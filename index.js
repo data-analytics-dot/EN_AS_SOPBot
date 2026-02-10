@@ -1033,13 +1033,22 @@ ${sopContext}
     temperature: 0.2,
   });
 
-  const answer = gptRes.choices[0].message?.content ?? "I couldn’t find an answer within this SOP.";
-  const slackAnswer = answer.replace(/\*\*(.*?)\*\*/g, '*$1*'); // Bold formatting fix for Slack
+  let answer = gptRes.choices[0].message?.content ?? "I couldn’t find an answer within this SOP.";
+
+  answer = answer.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<$2|$1>');
+
+  // 2. THE BOLD FIX: Converts **text** to *text* (Slack's version of bold)
+  answer = answer.replace(/\*\*(.*?)\*\*/g, '*$1*');
+
+  // 3. THE "FORCE" FIX: If GPT totally forgot the link, add it manually
+  if (!answer.includes('traceable-link.onrender.com')) {
+    answer += `\n\nFor more details and related links: <${activeSOP.link}|${activeSOP.title}>`;
+  }
 
   await client.chat.postMessage({
     channel: channel,
     thread_ts: threadId,
-    text: slackAnswer,
+    text: answer,
   });
 
   // Log to Coda
