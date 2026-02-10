@@ -728,7 +728,7 @@ slackApp.event("message", async ({ event, client }) => {
 
     await client.chat.postMessage({
       channel: event.channel,
-      thread_ts: threadId,
+      thread_ts: event.thread_ts,
       text: "Was this helpful?",
       blocks: [
         {
@@ -796,7 +796,7 @@ slackApp.event("message", async ({ event, client }) => {
 
       // 🔥 Answer the original question automatically
       const originalQuery = ctx.originalQuery || event.text;
-      await answerFollowUp(userId, threadId, confirmedSOP, originalQuery, client);
+      await answerFollowUp(userId, threadId, confirmedSOP, originalQuery, client, event.channel);
 
       // Clear original query
       setUserContext(userId, threadId, {
@@ -873,8 +873,6 @@ slackApp.event("message", async ({ event, client }) => {
 });
 
 async function answerFollowUp(userId, threadId, activeSOP, query, client, channel) {
-  
-
   const sopContexts = `
 Title: ${activeSOP.title}
 Link: <${activeSOP.link}|${activeSOP.title}>
