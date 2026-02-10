@@ -859,7 +859,7 @@ slackApp.event("message", async ({ event, client }) => {
     activeSOP,               // ✅ always defined
     ctx.originalQuery || event.text,
     client,
-    { channel: event.channel } // ✅ pass channel explicitly
+    event.channel // ✅ pass channel explicitly
   );
 
 
@@ -872,8 +872,8 @@ slackApp.event("message", async ({ event, client }) => {
 
 });
 
-async function answerFollowUp(userId, threadId, activeSOP, query, client, opts = {}) {
-  const channel = opts.channel || userId;
+async function answerFollowUp(userId, threadId, activeSOP, query, client, channel) {
+  
 
   const sopContexts = `
 Title: ${activeSOP.title}
