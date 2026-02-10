@@ -732,21 +732,14 @@ Rules:
 3. If no SOP matches, respond: "I couldn’t find an SOP that matches your question."
 
 Response Rules for [SINGLE]:
-1. First, identify the SOP that best answers the question.
-2. Determine the best way to answer:
-   - IF the question asks for a specific fact or single action: Find that EXACT step, include the step number, and provide only that detail.
-   - IF the question implies a process (e.g., "How do I..."): Provide a concise, numbered summary of the necessary steps to complete that specific task.
-3. Paraphrase everything in instructional style, second person ("you"), using clear action verbs.
-4. After explaining the step, include any relevant follow-through guidance:
-   - 💡 Tips that help execute the step more efficiently or correctly
-   - ⚠️ Warnings or cautions if there are common mistakes, risks, or edge cases
-   - 📝 Notes for important context or clarifications
-   - 🔢 Include any computations, formulas, or numeric examples exactly as stated in the SOP step if relevant to the question
-   - 📎 Include any forms, templates, links, or tools mentioned in the SOP that are relevant to the question, formatted as Slack hyperlinks: <URL|Title>
-5. Formatting rules:
-   - Insert a blank line between different insight types.
-   - Only include items that are directly relevant to the step. Do not force all types.
-6. End with: "For more details and related links: <${activeSOP.link}|${activeSOP.title}>".
+1. Answer the question in a single, cohesive paragraph. Do not use numbered lists or "Follow these steps." Start the answer immediately.
+2. Use a friendly, helpful tone in the second person ("you"). 
+3. After the main paragraph, include these sections ONLY if they are directly relevant:
+   - Tip: (efficiency/security tips)
+   - Warning: (risks/common mistakes)
+   - Note: (context/confirmations)
+4. Insert a blank line between each section.
+5. End with exactly this format: For more details and related links: <URL|Title>
 
 User question: ${query}
 SOPs:
@@ -1019,21 +1012,14 @@ async function answerFollowUp(userId, threadId, activeSOP, query, client, channe
 You are a helpful support assistant. The user is asking about: "${activeSOP.title}".
 
 Rules:
-1. First, identify the SOP that best answers the question.
-2. Determine the best way to answer:
-   - IF the question asks for a specific fact or single action: Find that EXACT step, include the step number, and provide only that detail.
-   - IF the question implies a process (e.g., "How do I..."): Provide a concise, numbered summary of the necessary steps to complete that specific task.
-3. Paraphrase everything in instructional style, second person ("you"), using clear action verbs.
-4. After explaining the step, include any relevant follow-through guidance:
-   - 💡 Tips that help execute the step more efficiently or correctly
-   - ⚠️ Warnings or cautions if there are common mistakes, risks, or edge cases
-   - 📝 Notes for important context or clarifications
-   - 🔢 Include any computations, formulas, or numeric examples exactly as stated in the SOP step if relevant to the question
-   - 📎 Include any forms, templates, links, or tools mentioned in the SOP that are relevant to the question, formatted as Slack hyperlinks: <URL|Title>
-5. Formatting rules:
-   - Insert a blank line between different insight types.
-   - Only include items that are directly relevant to the step. Do not force all types.
-6. End with: "For more details and related links: <${activeSOP.link}|${activeSOP.title}>".
+1. Answer the question in a single, cohesive paragraph. Do not use numbered lists or "Follow these steps." Start the answer immediately.
+2. Use a friendly, helpful tone in the second person ("you"). 
+3. After the main paragraph, include these sections ONLY if they are directly relevant:
+   - Tip: (efficiency/security tips)
+   - Warning: (risks/common mistakes)
+   - Note: (context/confirmations)
+4. Insert a blank line between each section.
+5. End with exactly this format: For more details and related links: <URL|Title>.
 
 User question: ${query}
 
