@@ -703,10 +703,8 @@ Rules:
 
 Response Rules for [SINGLE]:
 1. First, identify the SOP that best answers the question.
-2. Determine the best way to answer:
-   - IF the question asks for a specific fact or single action: Find that EXACT step, include the step number, and provide only that detail.
-   - IF the question implies a process (e.g., "How do I..."): Provide a concise, numbered summary of the necessary steps to complete that specific task.
-3. Paraphrase everything in instructional style, second person ("you"), using clear action verbs.
+2. Answer the question in a conversational narrative style using second person ("you").
+3. Only include information from the most relevant step(s) in that SOP. Do NOT include unrelated steps, summaries, or introductions.
 4. After the instructions, include relevant follow-through guidance:
    - 💡 Tips for efficiency
    - ⚠️ Warnings for common mistakes or risks
@@ -716,7 +714,7 @@ Response Rules for [SINGLE]:
 5. Formatting: 
    - Use a blank line between the instruction and the insights (Tips/Warnings).
    - Only include insights that add real value; don't force them.
-- End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
+6. End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
 
 User question: ${query}
 SOPs:
@@ -964,21 +962,19 @@ async function answerFollowUp(userId, threadId, activeSOP, query, client, channe
 You are a helpful support assistant. The user is asking about: "${activeSOP.title}".
 
 Rules:
-1.First, identify the SOP that best answers the question.
-2. Determine the best way to answer:
-   - IF the question asks for a specific fact or single action: Find that EXACT step, include the step number, and provide only that detail.
-   - IF the question implies a process (e.g., "How do I..."): Provide a concise, numbered summary of the necessary steps to complete that specific task.
-3. Paraphrase everything in instructional style, second person ("you"), using clear action verbs.
+1. First, identify the SOP that best answers the question.
+2. Answer the question in a conversational narrative style using second person ("you").
+3. Answer ONLY from the most relevant step. Do NOT include unrelated steps, summaries, or introductions.
 4. After the instructions, include relevant follow-through guidance:
    - 💡 Tips for efficiency
    - ⚠️ Warnings for common mistakes or risks
    - 📝 Notes for important context
    - 🔢 Include any computations or numeric examples if relevant
-   - 📎 Include relevant forms or tools as Slack hyperlinks: <URL|Title>. Slack only supports <URL|Title> format. Always use this.
+   - 📎 Include relevant forms or tools as Slack hyperlinks: <URL|Title>
 5. Formatting: 
    - Use a blank line between the instruction and the insights (Tips/Warnings).
    - Only include insights that add real value; don't force them.
-6.End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
+6. End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
 
 
 User question: ${query}
