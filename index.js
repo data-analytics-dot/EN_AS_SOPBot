@@ -978,7 +978,7 @@ Rules:
 5. Formatting: 
    - Use a blank line between the instruction and the insights (Tips/Warnings).
    - Only include insights that add real value; don't force them.
-5.End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
+6.End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
 
 
 User question: ${query}
