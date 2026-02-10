@@ -739,7 +739,8 @@ Response Rules for [SINGLE]:
    - Warning: (risks/common mistakes)
    - Note: (context/confirmations)
 4. Insert a blank line between each section.
-5. End with exactly this format: For more details and related links: <URL|Title>
+5. End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
+
 
 User question: ${query}
 SOPs:
@@ -1019,7 +1020,8 @@ Rules:
    - Warning: (risks/common mistakes)
    - Note: (context/confirmations)
 4. Insert a blank line between each section.
-5. End with exactly this format: For more details and related links: <URL|Title>.
+5.End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
+
 
 User question: ${query}
 
