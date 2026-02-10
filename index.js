@@ -770,12 +770,12 @@ slackApp.event("message", async ({ event, client }) => {
     return;
   }
 
-  if (ctx.state === "awaiting_disambiguation" && ctx.sopCandidates?.length) {
+   if (ctx.state === "awaiting_disambiguation" && ctx.sopCandidates?.length) {
     const userAnswer = lowerText;
     let nextIndex = ctx.sopIndex || 0;
 
     if (userAnswer === "yes") {
-      // User confirmed the SOP
+      // User confirmed SOP
       const confirmedSOP = ctx.sopCandidates[nextIndex];
       setUserContext(userId, threadId, {
         ...ctx,
@@ -785,12 +785,24 @@ slackApp.event("message", async ({ event, client }) => {
         activeSOPs: [confirmedSOP],
         timestamp: Date.now(),
       });
+
       await client.chat.postMessage({
         channel: event.channel,
         thread_ts: threadId,
         text: `✅ Great! Let's proceed with *${confirmedSOP.title}*.`,
       });
-      
+
+      // 🔥 Answer the original question automatically
+      const originalQuery = ctx.originalQuery || event.text;
+      await answerFollowUp(userId, threadId, confirmedSOP, originalQuery, client);
+
+      // Clear original query
+      setUserContext(userId, threadId, {
+        ...ctx,
+        originalQuery: null
+      });
+      return;
+
     } else if (userAnswer === "no") {
       // Try next SOP candidate
       nextIndex++;
@@ -804,25 +816,23 @@ slackApp.event("message", async ({ event, client }) => {
         await client.chat.postMessage({
           channel: event.channel,
           thread_ts: threadId,
-          text: `Are you perhaps asking about *${nextSOP.title}*?`,
+          text: `Are you perhaps asking about *${nextSOP.title}*?`
         });
         return;
       } else {
-        // No more candidates
         resetUserContext(userId, threadId);
         await client.chat.postMessage({
           channel: event.channel,
           thread_ts: threadId,
-          text: "❌ I couldn’t find the correct SOP. Please try asking differently.",
+          text: "❌ I couldn’t find the correct SOP. Please try asking differently."
         });
         return;
       }
     } else {
-      // User reply not recognized
       await client.chat.postMessage({
         channel: event.channel,
         thread_ts: threadId,
-        text: "Please answer with *Yes* or *No* so I can choose the correct SOP.",
+        text: "Please answer with *Yes* or *No* so I can choose the correct SOP."
       });
       return;
     }
@@ -840,13 +850,15 @@ slackApp.event("message", async ({ event, client }) => {
 
   console.log("🔥 Follow-up in thread detected:", query);
 
+  await answerFollowUp(userId, threadId, activeSOP, query, client);
+});
+
+async function answerFollowUp(userId, threadId, activeSOP, query, client) {
   const sopContexts = `
 Title: ${activeSOP.title}
 Link: <${activeSOP.link}|${activeSOP.title}>
 
-${parseSteps(activeSOP.sop)
-    .map(s => `${s.step}\n${s.content}`)
-    .join("\n\n")}
+${parseSteps(activeSOP.sop).map(s => `${s.step}\n${s.content}`).join("\n\n")}
 `;
 
   const prompt = `
@@ -856,18 +868,10 @@ The user is asking a follow-up question about: "${activeSOP.title}".
 Use ONLY the steps and content inside the SOP below.
 
 Your response must follow these rules:
-
-1. Paraphrase it concisely in instructional style, second person ("you"), with clear action verbs.
-2. If the SOP step contains links, forms, tools, templates, or external resources:
-   - Include ONLY those that are directly relevant to the user's follow-up question.
-   - Format each as a Slack hyperlink: <URL|Human-Friendly Title>
-
-3. After explaining the step, include:
-   - 💡 Optional: A tip if it directly helps execute the step
-   - ⚠️ Optional: A caution if there is a risk or common mistake
-   - 📝 Optional: Notes only if they provide necessary context
-
-4. Do NOT summarize the whole SOP or mention unrelated steps.
+1. Paraphrase concisely in instructional style, second person ("you"), with clear action verbs.
+2. Include only relevant links/forms/templates/tools as Slack hyperlinks.
+3. 💡 Optional tip, ⚠️ Optional caution, 📝 Optional notes if helpful.
+4. Do NOT summarize unrelated steps.
 
 User question: ${query}
 
@@ -881,25 +885,23 @@ ${sopContexts}
     temperature: 0.2,
   });
 
-  const answer = (gptRes.choices[0].message?.content ?? NO_SOP_RESPONSE).trim();
-
-  const NO_SOP_RESPONSE = "I couldn’t find an SOP that matches your question.";
-  const isNoSop = answer.trim() === NO_SOP_RESPONSE;
+  const answer = gptRes.choices[0].message?.content ?? "I couldn’t find an SOP that matches your question.";
 
   await client.chat.postMessage({
-    channel: event.channel,
+    channel: userId,
     thread_ts: threadId,
     text: answer,
   });
 
-  const rowId = await logSopUsageToCoda(client, {
+  // Log usage to Coda or database as needed
+  await logSopUsageToCoda(client, {
     userId,
-    channel: event.channel,
+    channel: userId,
     threadTs: threadId,
     question: query,
-    sopTitle: isNoSop ? null : activeSOP.title,
-    stepFound: answer !== NO_SOP_RESPONSE,
-    status: answer === NO_SOP_RESPONSE ? "No SOP" : "Follow-up Answer",
+    sopTitle: activeSOP.title,
+    stepFound: true,
+    status: "Follow-up Answer",
     gptResponse: answer,
     userName: null
   });
@@ -908,8 +910,7 @@ ${sopContexts}
     ...ctx,           
     lastRowId: rowId  
   });
-
-});
+}
 
 async function pickBestLiveSOP(query, deprecatedSOP, liveSOPs) {
     const prompt = `
