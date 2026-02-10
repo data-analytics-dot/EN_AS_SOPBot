@@ -724,11 +724,11 @@ slackApp.event("app_mention", async ({ event, client }) => {
   }).join("\n\n---\n\n");
 
   const prompt = `You are a helpful support assistant for SOPs. 
-Task: Determine if the user's question is answered by exactly one SOP, or if multiple are relevant.
+Task: Analyze the user's question against the provided SOPs.
 
 Rules:
-1. If ONE SOP is clearly relevant, respond with [SINGLE] followed by the answer.
-2. If TWO or more SOPs are relevant, respond with [MULTIPLE] and list the titles.
+1. If one SOP is a DIRECT and SPECIFIC match for the user's intent (even if other SOPs mention similar tools), you MUST respond with [SINGLE] and answer immediately.
+2. Only use [MULTIPLE] if the question is truly ambiguous and could be answered correctly by two or more DIFFERENT procedures.
 3. If no SOP matches, respond: "I couldn’t find an SOP that matches your question."
 
 [SINGLE] Format: Find the relevant step, use instructional style (2nd person), include 💡Tips/⚠️Warnings/📎Links, and end with "For more details: <URL|Title>".
