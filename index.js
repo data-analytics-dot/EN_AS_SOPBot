@@ -872,7 +872,7 @@ slackApp.event("message", async ({ event, client }) => {
 
 });
 
-async function answerFollowUp(userId, threadId, activeSOP, query, client, ctx) {
+async function answerFollowUp(userId, threadId, activeSOP, query, client, opts = {}) {
   const channel = opts.channel || userId;
 
   const sopContexts = `
