@@ -427,30 +427,262 @@ async function getSlackUserName(client, userId) {
 
 // --- Handle app mention ---
 
+// slackApp.event("app_mention", async ({ event, client }) => {
+//   const userId = event.user;
+//   const query = event.text.replace(/<@[^>]+>/, "").trim();
+//   const thread_ts = event.thread_ts || event.ts;
+
+//   // ⏳ Expire stale context for this user + thread
+//   resetUserContext(userId, thread_ts);
+//   let ctx = {}; 
+
+//   if (!ctx || Date.now() - ctx.timestamp > SESSION_TTL_MS) {
+//     resetUserContext(userId, thread_ts);
+//     ctx = getUserContext(userId, thread_ts); // refresh
+//   }
+
+//   console.log(`User asked: ${query}`);
+
+
+//   const lowerText = query.toLowerCase();
+
+//   // 🔄 Resume conversation
+//   if (lowerText === "resume") {
+//     const ctx = getUserContext(userId, thread_ts);
+//     if (ctx.state === "paused") {
+//       setUserContext(userId, thread_ts, { state: "active" });
+//       await client.chat.postMessage({
+//         channel: event.channel,
+//         thread_ts,
+//         text: `🔄 Resumed. We were on *${ctx.lastSOP ?? "your SOP"}*.`,
+//       });
+//     }
+//     return;
+//   }
+
+//   // --- Fetch or reuse SOPs ---
+//   let topSops;
+//   let isFollowUp = false;
+
+//   // 🔒 FIX #1: thread-level SOP lock
+//   if (ctx?.activeSOPs?.length) {
+//     console.log("🔒 Follow-up detected — using locked SOP");
+//     topSops = ctx.activeSOPs;
+//     isFollowUp = true;
+//   } else {
+//     const sops = await fetchSOPs();
+//     topSops = filterRelevantSOPs(sops, query);
+//   }
+
+//   if (topSops.length === 0) {
+//     await client.chat.postMessage({
+//       channel: event.channel,
+//       thread_ts,
+//       text: "I couldn’t find an SOP that matches your question.",
+//     });
+
+//     await logSopUsageToCoda(client, {
+//       userId: event.user,
+//       channel: event.channel,
+//       threadTs: thread_ts,
+//       question: query,
+//       sopTitle: null,
+//       stepFound: false,
+//       status: "No SOP",
+//       gptResponse: null,
+//     });
+
+//     return;
+//   }
+
+//   // --- Keep only top 3 SOPs ---
+//   topSops = topSops.slice(0, 3);
+
+//   // --- Filter deprecated SOPs ---
+//   const liveSOPs = topSops.filter(
+//     (s) => !(s.status || "").toLowerCase().includes("deprecated")
+//   );
+
+//   if (liveSOPs.length === 0) {
+//     await client.chat.postMessage({
+//       channel: event.channel,
+//       thread_ts,
+//       text: `:warning: All top SOP matches are deprecated. Please check the SOP library for newer versions.`,
+//     });
+
+//     await logSopUsageToCoda(client, {
+//       userId,
+//       channel: event.channel,
+//       threadTs: thread_ts,
+//       question: query,
+//       sopTitle: null,
+//       stepFound: false,
+//       status: "Deprecated SOP",
+//       gptResponse: null,
+//     });
+
+//     return;
+//   }
+
+//   topSops = liveSOPs.slice(0, 3);
+
+//   // --- Build context for GPT from top 3 SOPs ---
+//   let statusNote = "";
+//   const sopContexts = topSops
+//     .map((s) => {
+//       const steps = parseSteps(s.sop)
+//         .map((step) => `${step.step}\n${step.content}`)
+//         .join("\n\n");
+//       return `Title: ${s.title}\nLink: <${s.link}|${s.title}>\n${steps}`;
+//     })
+//     .join("\n\n---\n\n");
+
+//   // --- If follow-up, prepend context about previous SOP ---
+//   let followUpNote = "";
+//   if (isFollowUp && topSops.length > 0) {
+//     followUpNote = `\nThe user is asking a follow-up question about the same SOP titled "${topSops[0].title}". Use only this SOP to answer.\n\n`;
+//   }
+
+//   // --- GPT Prompt ---
+//   const prompt = `You are a helpful support assistant for SOPs. Use the SOPs below as your knowledge base.
+
+//   Important: 
+// - If TWO or more SOPs are relevant to the user's question, do NOT answer immediately. Instead, identify the relevant SOPs and ask the user for clarification, starting with the first SOP's title.  
+// - If exactly ONE SOP is clearly relevant, proceed to answer using that SOP and follow the Rules below.  
+// - If no SOP is relevant, respond: "I couldn’t find an SOP that matches your question."
+
+// ${followUpNote}
+// Rules:
+// 1. First, you MUST choose ONE SOP that best answers the user question.
+// 2. Then, find the SINGLE most relevant step (or sub-steps) inside that SOP, make sure it is relevant to the question asked and include the step number in the message.
+// 3. Answer ONLY from that step. Do NOT include unrelated steps, summaries, or introductions.
+// 4. Paraphrase concisely in instructional style, second person ("you"), with clear action verbs.
+// 5. After explaining the step, include any relevant follow-through guidance:
+//    - 💡 Tips that help execute the step more efficiently or correctly
+//    - ⚠️ Warnings or cautions if there are common mistakes, risks, or edge cases
+//    - 📝 Notes for important context or clarifications
+//    - 🔢 Include any computations, formulas, or numeric examples exactly as stated in the SOP step if relevant to the question
+//    - 📎 Include any forms, templates, links, or tools mentioned in the SOP that are relevant to the question, formatted as Slack hyperlinks: <URL|Title>
+// 6. Formatting rules:
+//    Formatting rules:
+//    - Insert a blank line between different insight types
+//    Only include items that are directly relevant to the step. Do not force all types.
+// 6. End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
+// 7. If no SOP or step matches, respond: "I couldn’t find an SOP that matches your question."
+
+// User question: ${query}
+
+// Here are all the SOPs:
+// ${sopContexts}`;
+
+//   const gptRes = await openai.chat.completions.create({
+//     model: "gpt-4",
+//     messages: [{ role: "user", content: prompt }],
+//     temperature: 0.2,
+//   });
+
+//   const answer = gptRes.choices[0].message?.content ?? "No answer.";
+
+//   const NO_SOP_RESPONSE = "I couldn’t find an SOP that matches your question.";
+//   const isNoSop = answer.trim() === NO_SOP_RESPONSE;
+
+//    if (answer.toLowerCase().includes("are you perhaps asking about") || topSops.length > 1) {
+//     // Ask user for clarification
+//     const first = topSops[0];
+//     const firstTitle = first.steps?.[0]?.step ?? first.title;
+
+//     setUserContext(userId, thread_ts, {
+//       state: "awaiting_disambiguation",
+//       sopCandidates: topSops,
+//       sopIndex: 0,
+//       originalQuery: query,
+//       timestamp: Date.now()
+//     });
+
+//     await client.chat.postMessage({
+//       channel: event.channel,
+//       thread_ts,
+//       text: `Are you perhaps asking about *${firstTitle}*?`
+//     });
+//     return; // STOP here — wait for user YES/NO
+//   }
+
+//   // --- Extract chosen SOP from GPT response ---
+//   const chosenSOP = answer.match(/<[^|>]+\|([^>]+)>/)?.[1]?.trim() ?? topSops[0].title;
+  
+//   const relatedSOPs = topSops
+//   .filter(s => s.title !== chosenSOP)
+//   .slice(0, 2); // optional: max 2 related SOPs
+
+//   let relatedText = "";
+//   if (relatedSOPs.length > 0) {
+//     relatedText = "\n\n*SOPs you might want to check:*\n";
+//     relatedText += relatedSOPs
+//       .map(s => `• <${s.link}|${s.title}>`)
+//       .join("\n");
+//   }
+
+//   const finalText =
+//   answer.trim() === NO_SOP_RESPONSE
+//     ? NO_SOP_RESPONSE
+//     : `${answer}\n\n${statusNote}${relatedText}`;
+
+
+//   await client.chat.postMessage({
+//     channel: event.channel,
+//     thread_ts,
+//     text: finalText,
+//   });
+
+//   await logSopUsageToCoda(client, {
+//     userId: userId,
+//     channel: event.channel,
+//     threadTs: thread_ts,
+//     question: query,
+//     sopTitle: chosenSOP,
+//     stepFound: !isNoSop,
+//     status: isNoSop ? "No SOP" : "Answered",
+//     gptResponse: isNoSop ? null : answer,
+//   });
+
+//   if (isNoSop) {
+//     resetUserContext(userId, thread_ts);
+//     return;
+//   }
+
+//   // Re-order topSops so the chosen one is first
+//   const validatedSOPObject = topSops.find(s => s.title === chosenSOP);
+
+//   // If GPT chose it, that is now our ONLY active SOP for this thread
+//   const finalLockedSOPs =  topSops.find(s => s.title === chosenSOP) ? [topSops.find(s => s.title === chosenSOP)] : [topSops[0]];
+
+//   setUserContext(userId, thread_ts, {
+//     ...ctx,
+//     state: "active",
+//     lastSOP: chosenSOP,
+//     lastStepNumber: 1,
+//     activeSOPs: finalLockedSOPs, // 🔒 This locks it for the "message" event!
+//     timestamp: Date.now()
+//   });
+
+// });
+
+
 slackApp.event("app_mention", async ({ event, client }) => {
   const userId = event.user;
   const query = event.text.replace(/<@[^>]+>/, "").trim();
   const thread_ts = event.thread_ts || event.ts;
 
-  // ⏳ Expire stale context for this user + thread
+  // ⏳ Clear and Refresh Context
   resetUserContext(userId, thread_ts);
-  let ctx = {}; 
-
-  if (!ctx || Date.now() - ctx.timestamp > SESSION_TTL_MS) {
-    resetUserContext(userId, thread_ts);
-    ctx = getUserContext(userId, thread_ts); // refresh
-  }
+  let ctx = getUserContext(userId, thread_ts);
 
   console.log(`User asked: ${query}`);
 
-
-  const lowerText = query.toLowerCase();
-
-  // 🔄 Resume conversation
-  if (lowerText === "resume") {
-    const ctx = getUserContext(userId, thread_ts);
+  // --- 🔄 Resume Logic ---
+  if (query.toLowerCase() === "resume") {
     if (ctx.state === "paused") {
-      setUserContext(userId, thread_ts, { state: "active" });
+      setUserContext(userId, thread_ts, { ...ctx, state: "active" });
       await client.chat.postMessage({
         channel: event.channel,
         thread_ts,
@@ -460,18 +692,20 @@ slackApp.event("app_mention", async ({ event, client }) => {
     return;
   }
 
-  // --- Fetch or reuse SOPs ---
+  // --- Fetch and Filter SOPs ---
   let topSops;
   let isFollowUp = false;
 
-  // 🔒 FIX #1: thread-level SOP lock
   if (ctx?.activeSOPs?.length) {
-    console.log("🔒 Follow-up detected — using locked SOP");
     topSops = ctx.activeSOPs;
     isFollowUp = true;
   } else {
     const sops = await fetchSOPs();
-    topSops = filterRelevantSOPs(sops, query);
+    // Filter out deprecated ones immediately
+    const filtered = filterRelevantSOPs(sops, query).filter(
+      (s) => !(s.status || "").toLowerCase().includes("deprecated")
+    );
+    topSops = filtered.slice(0, 3);
   }
 
   if (topSops.length === 0) {
@@ -480,117 +714,40 @@ slackApp.event("app_mention", async ({ event, client }) => {
       thread_ts,
       text: "I couldn’t find an SOP that matches your question.",
     });
-
-    await logSopUsageToCoda(client, {
-      userId: event.user,
-      channel: event.channel,
-      threadTs: thread_ts,
-      question: query,
-      sopTitle: null,
-      stepFound: false,
-      status: "No SOP",
-      gptResponse: null,
-    });
-
     return;
   }
 
-  // --- Keep only top 3 SOPs ---
-  topSops = topSops.slice(0, 3);
+  // --- Build context for GPT ---
+  const sopContexts = topSops.map((s) => {
+    const steps = parseSteps(s.sop).map((step) => `${step.step}\n${step.content}`).join("\n\n");
+    return `Title: ${s.title}\nLink: <${s.link}|${s.title}>\n${steps}`;
+  }).join("\n\n---\n\n");
 
-  // --- Filter deprecated SOPs ---
-  const liveSOPs = topSops.filter(
-    (s) => !(s.status || "").toLowerCase().includes("deprecated")
-  );
+  const prompt = `You are a helpful support assistant for SOPs. 
+Task: Determine if the user's question is answered by exactly one SOP, or if multiple are relevant.
 
-  if (liveSOPs.length === 0) {
-    await client.chat.postMessage({
-      channel: event.channel,
-      thread_ts,
-      text: `:warning: All top SOP matches are deprecated. Please check the SOP library for newer versions.`,
-    });
-
-    await logSopUsageToCoda(client, {
-      userId,
-      channel: event.channel,
-      threadTs: thread_ts,
-      question: query,
-      sopTitle: null,
-      stepFound: false,
-      status: "Deprecated SOP",
-      gptResponse: null,
-    });
-
-    return;
-  }
-
-  topSops = liveSOPs.slice(0, 3);
-
-  // --- Build context for GPT from top 3 SOPs ---
-  let statusNote = "";
-  const sopContexts = topSops
-    .map((s) => {
-      const steps = parseSteps(s.sop)
-        .map((step) => `${step.step}\n${step.content}`)
-        .join("\n\n");
-      return `Title: ${s.title}\nLink: <${s.link}|${s.title}>\n${steps}`;
-    })
-    .join("\n\n---\n\n");
-
-  // --- If follow-up, prepend context about previous SOP ---
-  let followUpNote = "";
-  if (isFollowUp && topSops.length > 0) {
-    followUpNote = `\nThe user is asking a follow-up question about the same SOP titled "${topSops[0].title}". Use only this SOP to answer.\n\n`;
-  }
-
-  // --- GPT Prompt ---
-  const prompt = `You are a helpful support assistant for SOPs. Use the SOPs below as your knowledge base.
-
-  Important: 
-- If TWO or more SOPs are relevant to the user's question, do NOT answer immediately. Instead, identify the relevant SOPs and ask the user for clarification, starting with the first SOP's title.  
-- If exactly ONE SOP is clearly relevant, proceed to answer using that SOP and follow the Rules below.  
-- If no SOP is relevant, respond: "I couldn’t find an SOP that matches your question."
-
-${followUpNote}
 Rules:
-1. First, you MUST choose ONE SOP that best answers the user question.
-2. Then, find the SINGLE most relevant step (or sub-steps) inside that SOP, make sure it is relevant to the question asked and include the step number in the message.
-3. Answer ONLY from that step. Do NOT include unrelated steps, summaries, or introductions.
-4. Paraphrase concisely in instructional style, second person ("you"), with clear action verbs.
-5. After explaining the step, include any relevant follow-through guidance:
-   - 💡 Tips that help execute the step more efficiently or correctly
-   - ⚠️ Warnings or cautions if there are common mistakes, risks, or edge cases
-   - 📝 Notes for important context or clarifications
-   - 🔢 Include any computations, formulas, or numeric examples exactly as stated in the SOP step if relevant to the question
-   - 📎 Include any forms, templates, links, or tools mentioned in the SOP that are relevant to the question, formatted as Slack hyperlinks: <URL|Title>
-6. Formatting rules:
-   Formatting rules:
-   - Insert a blank line between different insight types
-   Only include items that are directly relevant to the step. Do not force all types.
-6. End with: "For more details and related links: <SOP URL|SOP Title>". Slack only supports <URL|Title> format. Always use this.
-7. If no SOP or step matches, respond: "I couldn’t find an SOP that matches your question."
+1. If ONE SOP is clearly relevant, respond with [SINGLE] followed by the answer.
+2. If TWO or more SOPs are relevant, respond with [MULTIPLE] and list the titles.
+3. If no SOP matches, respond: "I couldn’t find an SOP that matches your question."
+
+[SINGLE] Format: Find the relevant step, use instructional style (2nd person), include 💡Tips/⚠️Warnings/📎Links, and end with "For more details: <URL|Title>".
 
 User question: ${query}
-
-Here are all the SOPs:
+SOPs:
 ${sopContexts}`;
 
   const gptRes = await openai.chat.completions.create({
     model: "gpt-4",
     messages: [{ role: "user", content: prompt }],
-    temperature: 0.2,
+    temperature: 0.1,
   });
 
-  const answer = gptRes.choices[0].message?.content ?? "No answer.";
-
+  let gptResponse = gptRes.choices[0].message?.content ?? "I couldn’t find an SOP that matches your question.";
   const NO_SOP_RESPONSE = "I couldn’t find an SOP that matches your question.";
-  const isNoSop = answer.trim() === NO_SOP_RESPONSE;
 
-   if (answer.toLowerCase().includes("are you perhaps asking about") || topSops.length > 1) {
-    // Ask user for clarification
-    const first = topSops[0];
-    const firstTitle = first.steps?.[0]?.step ?? first.title;
-
+  // --- 1. HANDLE MULTIPLE MATCHES (Clarification) ---
+  if (gptResponse.includes("[MULTIPLE]")) {
     setUserContext(userId, thread_ts, {
       state: "awaiting_disambiguation",
       sopCandidates: topSops,
@@ -602,69 +759,47 @@ ${sopContexts}`;
     await client.chat.postMessage({
       channel: event.channel,
       thread_ts,
-      text: `Are you perhaps asking about *${firstTitle}*?`
+      text: `It looks like there are a few possible answers. Are you perhaps asking about *${topSops[0].title}*?`
     });
-    return; // STOP here — wait for user YES/NO
-  }
-
-  // --- Extract chosen SOP from GPT response ---
-  const chosenSOP = answer.match(/<[^|>]+\|([^>]+)>/)?.[1]?.trim() ?? topSops[0].title;
-  
-  const relatedSOPs = topSops
-  .filter(s => s.title !== chosenSOP)
-  .slice(0, 2); // optional: max 2 related SOPs
-
-  let relatedText = "";
-  if (relatedSOPs.length > 0) {
-    relatedText = "\n\n*SOPs you might want to check:*\n";
-    relatedText += relatedSOPs
-      .map(s => `• <${s.link}|${s.title}>`)
-      .join("\n");
-  }
-
-  const finalText =
-  answer.trim() === NO_SOP_RESPONSE
-    ? NO_SOP_RESPONSE
-    : `${answer}\n\n${statusNote}${relatedText}`;
-
-
-  await client.chat.postMessage({
-    channel: event.channel,
-    thread_ts,
-    text: finalText,
-  });
-
-  await logSopUsageToCoda(client, {
-    userId: userId,
-    channel: event.channel,
-    threadTs: thread_ts,
-    question: query,
-    sopTitle: chosenSOP,
-    stepFound: !isNoSop,
-    status: isNoSop ? "No SOP" : "Answered",
-    gptResponse: isNoSop ? null : answer,
-  });
-
-  if (isNoSop) {
-    resetUserContext(userId, thread_ts);
     return;
   }
 
-  // Re-order topSops so the chosen one is first
-  const validatedSOPObject = topSops.find(s => s.title === chosenSOP);
+  // --- 2. HANDLE SINGLE MATCH (Direct Answer) ---
+  if (gptResponse.includes("[SINGLE]")) {
+    const cleanAnswer = gptResponse.replace("[SINGLE]", "").trim();
+    
+    // Use Regex to find which SOP GPT chose to mention at the end
+    const chosenSOPTitle = cleanAnswer.match(/<[^|>]+\|([^>]+)>/)?.[1]?.trim() || topSops[0].title;
+    const validatedSOP = topSops.find(s => s.title === chosenSOPTitle) || topSops[0];
 
-  // If GPT chose it, that is now our ONLY active SOP for this thread
-  const finalLockedSOPs =  topSops.find(s => s.title === chosenSOP) ? [topSops.find(s => s.title === chosenSOP)] : [topSops[0]];
+    await client.chat.postMessage({
+      channel: event.channel,
+      thread_ts,
+      text: cleanAnswer,
+    });
 
-  setUserContext(userId, thread_ts, {
-    ...ctx,
-    state: "active",
-    lastSOP: chosenSOP,
-    lastStepNumber: 1,
-    activeSOPs: finalLockedSOPs, // 🔒 This locks it for the "message" event!
-    timestamp: Date.now()
+    // Lock context for future follow-ups
+    setUserContext(userId, thread_ts, {
+      state: "active",
+      lastSOP: validatedSOP.title,
+      activeSOPs: [validatedSOP],
+      timestamp: Date.now()
+    });
+
+    await logSopUsageToCoda(client, {
+      userId, channel: event.channel, threadTs: thread_ts,
+      question: query, sopTitle: validatedSOP.title,
+      stepFound: true, status: "Answered", gptResponse: cleanAnswer,
+    });
+    return;
+  }
+
+  // --- 3. HANDLE NO MATCH ---
+  await client.chat.postMessage({
+    channel: event.channel,
+    thread_ts,
+    text: NO_SOP_RESPONSE,
   });
-
 });
 
 slackApp.event("message", async ({ event, client }) => {
@@ -777,26 +912,19 @@ slackApp.event("message", async ({ event, client }) => {
     if (userAnswer === "yes") {
       // User confirmed SOP
       const confirmedSOP = ctx.sopCandidates[nextIndex];
+      const queryToAnswer = ctx.originalQuery || event.text;
+
+      // Lock the context
       setUserContext(userId, threadId, {
         ...ctx,
         state: "active",
         lastSOP: confirmedSOP.title,
-        lastStepNumber: 1,
         activeSOPs: [confirmedSOP],
+        originalQuery: null, // 💡 CLEAR THIS HERE so it doesn't loop
         timestamp: Date.now(),
-        channel: event.channel,
-        originalQuery: ctx.originalQuery || event.text
       });
 
-      // 🔥 Answer the original question automatically
-      const originalQuery = ctx.originalQuery || event.text;
-      await answerFollowUp(userId, threadId, confirmedSOP, originalQuery, client, event.channel);
-
-      // Clear original query
-      setUserContext(userId, threadId, {
-        ...ctx,
-        originalQuery: null
-      });
+      await answerFollowUp(userId, threadId, confirmedSOP, queryToAnswer, client, event.channel);
       return;
 
     } else if (userAnswer === "no") {
@@ -842,61 +970,54 @@ slackApp.event("message", async ({ event, client }) => {
 
 
   const activeSOP = ctx.activeSOPs[0];
-  const query = event.text.trim();
+  const currentQuery = event.text.trim();
 
-  console.log("🔥 Follow-up in thread detected:", query);
+  console.log("🔥 Follow-up in thread detected:", currentQuery);
 
- // Instead of confirmedSOP (which might be undefined), use activeSOP
   const rowId = await answerFollowUp(
     userId,
     threadId,
-    activeSOP,               // ✅ always defined
-    ctx.originalQuery || event.text,
+    activeSOP,
+    currentQuery, // 💡 Pass the fresh question
     client,
-    event.channel // ✅ pass channel explicitly
+    event.channel
   );
 
-
-
   setUserContext(userId, threadId, {
-  ...ctx,
-  lastRowId: rowId,
-  originalQuery: null
-});
+    ...ctx,
+    lastRowId: rowId,
+    timestamp: Date.now()
+  });
 
 });
 
 async function answerFollowUp(userId, threadId, activeSOP, query, client, channel) {
-  const sopContexts = `
-Title: ${activeSOP.title}
-Link: <${activeSOP.link}|${activeSOP.title}>
+  // 1. Prepare the SOP context exactly like the mention handler
+  const steps = parseSteps(activeSOP.sop)
+    .map((s) => `${s.step}\n${s.content}`)
+    .join("\n\n");
+  
+  const sopContext = `Title: ${activeSOP.title}\nLink: <${activeSOP.link}|${activeSOP.title}>\n${steps}`;
 
-${parseSteps(activeSOP.sop).map(s => `${s.step}\n${s.content}`).join("\n\n")}
-`;
-
+  // 2. Use the "Smarter" instruction set
   const prompt = `
-You are a helpful support assistant for SOPs.
-The user is asking a follow-up question about: "${activeSOP.title}".
+You are a helpful support assistant. The user is asking about: "${activeSOP.title}".
 
-Use ONLY the steps and content inside the SOP below.
-
-Your response must follow these rules:
-1. Paraphrase concisely in instructional style, second person ("you"), with clear action verbs.
-2. Include only relevant links/forms/templates/tools as Slack hyperlinks <SOP URL|SOP Title>.
-3. After explaining the step, include any relevant follow-through guidance:
-   - 💡 Tips that help execute the step more efficiently or correctly
-   - ⚠️ Warnings or cautions if there are common mistakes, risks, or edge cases
-   - 📝 Notes for important context or clarifications
-   - 🔢 Include any computations, formulas, or numeric examples exactly as stated in the SOP step if relevant to the question
-   - 📎 Include any forms, templates, links, or tools mentioned in the SOP that are relevant to the question, formatted as Slack hyperlinks: <URL|Title>
-4. Formatting rules:
-   - Insert a blank line between different insight types
-5. Do NOT summarize unrelated steps.
+Rules:
+1. Find the SINGLE most relevant step (or sub-steps) inside the SOP provided below.
+2. Paraphrase concisely in instructional style, second person ("you"), with clear action verbs.
+3. After the explanation, include relevant follow-through guidance:
+   - 💡 Tips for efficiency
+   - ⚠️ Warnings for common mistakes or risks
+   - 📝 Notes for context
+   - 📎 Relevant forms/tools as Slack hyperlinks: <URL|Title>
+4. Formatting: Insert a blank line between different insight types.
+5. End with: "For more details and related links: <${activeSOP.link}|${activeSOP.title}>".
 
 User question: ${query}
 
 SOP Content:
-${sopContexts}
+${sopContext}
 `;
 
   const gptRes = await openai.chat.completions.create({
@@ -905,57 +1026,71 @@ ${sopContexts}
     temperature: 0.2,
   });
 
-  const answer = gptRes.choices[0].message?.content ?? "I couldn’t find an SOP that matches your question.";
+  const answer = gptRes.choices[0].message?.content ?? "I couldn’t find an answer within this SOP.";
+  const slackAnswer = answer.replace(/\*\*(.*?)\*\*/g, '*$1*'); // Bold formatting fix for Slack
 
   await client.chat.postMessage({
-    channel: channel, // fallback if ctx.channel exists
+    channel: channel,
     thread_ts: threadId,
-    text: answer,
+    text: slackAnswer,
   });
 
-  // Log usage to Coda or database as needed
-  const rowId = await logSopUsageToCoda(client, {
-    userId,
-    channel,
-    threadTs: threadId,
-    question: query,
-    sopTitle: activeSOP.title,
-    stepFound: true,
-    status: "Follow-up Answer",
-    gptResponse: answer,
-    userName: null
+  // Log to Coda
+  return await logSopUsageToCoda(client, {
+    userId, channel, threadTs: threadId,
+    question: query, sopTitle: activeSOP.title,
+    stepFound: true, status: "Follow-up Answer", gptResponse: answer
+  });
+}
+
+async function findBestMatchingSOP(query, sopList) {
+  const prompt = `
+You are an SOP classification assistant.
+
+User question: "${query}"
+
+You are given a list of up to 5 SOPs. For each SOP, you will evaluate:
+
+- Does this SOP fully answer the question?
+- Is it strongly relevant?
+- Or does it seem unrelated?
+
+Return a JSON object with EXACTLY this structure:
+
+{
+  "bestMatchIndex": number | null,   // index of the SOP that answers the question fully
+  "strongCandidates": number[]       // indexes of SOPs that are somewhat relevant but not certain
+}
+
+Rules:
+- If exactly ONE SOP is clearly the correct match, set bestMatchIndex to its index.
+- If MORE THAN ONE SOP is possible, set bestMatchIndex to null and list their indexes in strongCandidates.
+- If NONE match, return both as null or empty.
+- ONLY return JSON. No explanations.
+
+SOP LIST:
+${sopList.map((s, i) =>
+`[${i}]
+Title: ${s.title}
+Content:
+${parseSteps(s.sop).map(x => x.content).join("\n")}
+`).join("\n\n")}
+`;
+
+  const res = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.1,
   });
 
-  return rowId;
+  try {
+    return JSON.parse(res.choices[0].message.content);
+  } catch (e) {
+    console.error("⚠️ Failed to parse GPT SOP disambiguation:", e);
+    return { bestMatchIndex: null, strongCandidates: [] };
+  }
 }
 
-async function pickBestLiveSOP(query, deprecatedSOP, liveSOPs) {
-    const prompt = `
-  User question:
-  "${query}"
-
-  Deprecated SOP:
-  "${deprecatedSOP.title}"
-
-  Live SOP options:
-  ${liveSOPs.map((s, i) => `${i + 1}. ${s.title}`).join("\n")}
-
-  Which ONE live SOP best answers the user's question?
-
-  Rules:
-  - Respond with ONLY the number (1, 2, 3, etc)
-  - No explanation
-  `;
-
-    const res = await openai.chat.completions.create({
-      model: "gpt-4",
-      temperature: 0,
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    const idx = parseInt(res.choices[0].message.content.trim(), 10);
-    return liveSOPs[idx - 1] ?? liveSOPs[0];
-}
 
 // --- Start Slack App ---
 (async () => {
