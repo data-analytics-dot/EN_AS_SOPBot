@@ -1101,8 +1101,15 @@ slackApp.action(/helpful_(yes|no|ask_km)/, async ({ ack, body, client, action })
 
   try {
     // 1. Parse the channel and ts we passed in the button value
+    const channelId = body.channel.id;
+    const messageTs = body.message.ts; // The feedback message itself
+    const threadTs = body.message.thread_ts;
+
     const { channel, ts } = JSON.parse(action.value);
     const actionId = action.action_id;
+    
+
+    
 
     // 1. Determine the feedback label for Coda
     let feedbackValue = "No"; 
@@ -1110,7 +1117,10 @@ slackApp.action(/helpful_(yes|no|ask_km)/, async ({ ack, body, client, action })
     if (actionId === "helpful_ask_km") feedbackValue = "Escalated to KM";
 
     // 2. Get Permalink & Log to Coda
-    const permalinkRes = await client.chat.getPermalink({ channel, message_ts: ts });
+    const permalinkRes = await client.chat.getPermalink({ 
+            channel: channelId, 
+            message_ts: threadTs || messageTs // Fallback to messageTs if not in a thread
+        });
     const link = permalinkRes.ok ? permalinkRes.permalink : `Link unavailable (TS: ${ts})`;
     await logHelpfulFeedback(link, feedbackValue);
 
@@ -1132,11 +1142,11 @@ slackApp.action(/helpful_(yes|no|ask_km)/, async ({ ack, body, client, action })
           : "📨 KM team notified.");
 
     await client.chat.update({
-      channel: body.channel.id,
-      ts: body.message.ts,
-      text: responseText,
-      blocks: [] 
-    });
+            channel: channelId,
+            ts: messageTs,
+            text: responseText,
+            blocks: [] 
+        });
 
   } catch (err) {
     console.error("❌ Error processing feedback action:", err);
